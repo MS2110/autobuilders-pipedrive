@@ -99,37 +99,59 @@ app.get("/extension/deal", async (req, res) => {
 // API endpoint to calculate commissions
 app.post("/api/calculate-commission", async (req, res) => {
   try {
+    console.log("=== Calculate Commission Request ===");
+    console.log("Body:", req.body);
+    console.log("User:", req.user);
+
     const { dealId, selectedUserId } = req.body;
 
     if (!dealId || !selectedUserId) {
+      console.log("Missing dealId or selectedUserId");
       return res
         .status(400)
         .json({ error: "Missing dealId or selectedUserId" });
     }
 
+    if (!req.user || req.user.length < 1 || !req.user[0].access_token) {
+      console.log("No authenticated user found");
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    console.log("Fetching deal:", dealId);
     const deal = await api.getDealById(dealId, req.user[0].access_token);
+    console.log("Deal response:", deal);
 
     if (!deal.success) {
+      console.log("Deal not found");
       return res.status(404).json({ error: "Deal not found" });
     }
 
     const dealData = deal.data;
     const dealValue = dealData.value || 0;
 
+    console.log("Deal value:", dealValue);
+    console.log("Deal data keys:", Object.keys(dealData));
+
     // Get commission config from custom field
     let commissionConfig = [];
     if (dealData.commission_config_json) {
       try {
         commissionConfig = JSON.parse(dealData.commission_config_json);
+        console.log("Commission config loaded:", commissionConfig);
       } catch (e) {
+        console.log("Failed to parse commission config:", e.message);
         commissionConfig = [];
       }
+    } else {
+      console.log("No commission_config_json field found");
     }
 
     // Get deposit percentage (assuming it's a custom field)
     const depositPercent = dealData.deposit_percent || 0;
     const depositAmount = (dealValue * depositPercent) / 100;
     const remainingAmount = dealValue - depositAmount;
+
+    console.log("Deposit percent:", depositPercent);
 
     // Calculate commissions for each party
     const calculations = commissionConfig.map((party) => {
@@ -149,6 +171,8 @@ app.post("/api/calculate-commission", async (req, res) => {
       };
     });
 
+    console.log("Calculations:", calculations);
+
     res.json({
       success: true,
       dealValue: dealValue,
@@ -160,7 +184,11 @@ app.post("/api/calculate-commission", async (req, res) => {
     });
   } catch (error) {
     console.error("Error calculating commission:", error);
-    res.status(500).json({ error: "Failed to calculate commission" });
+    console.error("Error stack:", error.stack);
+    res.status(500).json({
+      error: "Failed to calculate commission",
+      details: error.message,
+    });
   }
 });
 

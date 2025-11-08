@@ -52,6 +52,9 @@
       border-radius: 8px; padding: 16px; margin-bottom: 16px; } .total-row {
       background: #f0fdf4 !important; font-weight: 600; } .text-right {
       text-align: right; } .small { font-size: 12px; color: #6b7280; }
+      .debug-info { background: #f3f4f6; border: 1px solid #d1d5db;
+      border-radius: 6px; padding: 12px; margin-bottom: 16px; font-family:
+      monospace; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -63,6 +66,8 @@
       </div>
 
       <div id="error" class="error" style="display: none;"></div>
+
+      <div id="debug" class="debug-info" style="display: none;"></div>
 
       <div id="content" style="display: none;">
         <div class="summary-card">
@@ -123,25 +128,38 @@
       src="https://cdn.jsdelivr.net/npm/@pipedrive/app-extensions-sdk@0.4.0/dist/index.js"
     ></script>
     <script>
-      let sdk; let dealId; let selectedUserId; let commissionConfig = []; async
-      function init() { try { sdk = await window.AppExtensionsSDK.initialize();
-      const context = await sdk.getContext(); dealId = context.dealId;
-      selectedUserId = context.userId; if (!dealId) { showError('No deal ID
-      found'); return; } await loadCommissionData(); } catch (error) {
-      console.error('Initialization error:', error); showError('Failed to
-      initialize extension: ' + error.message); } } async function
-      loadCommissionData() { try { const response = await
-      fetch('/api/calculate-commission', { method: 'POST', headers: {
-      'Content-Type': 'application/json' }, body: JSON.stringify({ dealId,
-      selectedUserId }) }); if (!response.ok) { throw new Error('Failed to load
-      commission data'); } const data = await response.json(); commissionConfig
-      = data.commissionConfig || []; displaySummary(data);
-      renderCommissionRows(); displayResults(data.calculations || []);
+      let sdk; let dealId; let selectedUserId; let commissionConfig = [];
+      function showDebug(message) { const debugEl =
+      document.getElementById('debug'); debugEl.style.display = 'block';
+      debugEl.innerHTML += message + '<br>'; console.log('[DEBUG]', message); }
+      async function init() { try { showDebug('Starting initialization...'); if
+      (!window.AppExtensionsSDK) { showError('Pipedrive SDK not loaded');
+      return; } showDebug('SDK found, initializing...'); sdk = await
+      window.AppExtensionsSDK.initialize(); showDebug('SDK initialized
+      successfully'); const context = await sdk.getContext();
+      showDebug('Context: ' + JSON.stringify(context)); dealId = context.dealId;
+      selectedUserId = context.userId; showDebug('Deal ID: ' + dealId + ', User
+      ID: ' + selectedUserId); if (!dealId) { showError('No deal ID found in
+      context'); return; } await loadCommissionData(); } catch (error) {
+      console.error('Initialization error:', error); showDebug('Error: ' +
+      error.message); showError('Failed to initialize: ' + error.message); } }
+      async function loadCommissionData() { try { showDebug('Fetching commission
+      data...'); const response = await fetch('/api/calculate-commission', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body:
+      JSON.stringify({ dealId, selectedUserId }) }); showDebug('Response status:
+      ' + response.status); if (!response.ok) { const errorText = await
+      response.text(); showDebug('Error response: ' + errorText); throw new
+      Error('Failed to load commission data: ' + response.status); } const data
+      = await response.json(); showDebug('Data received: ' +
+      JSON.stringify(data)); commissionConfig = data.commissionConfig || [];
+      displaySummary(data); renderCommissionRows();
+      displayResults(data.calculations || []);
       document.getElementById('loading').style.display = 'none';
       document.getElementById('content').style.display = 'block'; } catch
-      (error) { console.error('Error loading data:', error); showError('Failed
-      to load commission data: ' + error.message); } } function
-      displaySummary(data) { document.getElementById('dealValue').textContent =
+      (error) { console.error('Error loading data:', error); showDebug('Load
+      error: ' + error.message); showError('Failed to load commission data: ' +
+      error.message); } } function displaySummary(data) {
+      document.getElementById('dealValue').textContent =
       formatCurrency(data.dealValue);
       document.getElementById('depositPercent').textContent =
       data.depositPercent.toFixed(0);
@@ -173,12 +191,14 @@
       commissionConfig.push({ name: '', percent: 0, fixed: 0, appliesTo: 'total'
       }); renderCommissionRows(); } function removeRow(index) {
       commissionConfig.splice(index, 1); renderCommissionRows(); } async
-      function saveAndCalculate() { try { // First, save the config back to
-      Pipedrive await sdk.execute('update', { commission_config_json:
-      JSON.stringify(commissionConfig) }); // Then reload the calculations await
-      loadCommissionData(); } catch (error) { console.error('Error saving:',
-      error); showError('Failed to save configuration: ' + error.message); } }
-      function displayResults(calculations) { const tbody =
+      function saveAndCalculate() { try { showDebug('Saving configuration...');
+      // First, save the config back to Pipedrive await sdk.execute('update', {
+      commission_config_json: JSON.stringify(commissionConfig) });
+      showDebug('Configuration saved, reloading...'); // Then reload the
+      calculations await loadCommissionData(); } catch (error) {
+      console.error('Error saving:', error); showDebug('Save error: ' +
+      error.message); showError('Failed to save configuration: ' +
+      error.message); } } function displayResults(calculations) { const tbody =
       document.getElementById('resultsBody'); tbody.innerHTML = ''; let totalSum
       = 0; calculations.forEach(calc => { const row =
       document.createElement('tr'); row.innerHTML = `
@@ -200,7 +220,8 @@
       document.getElementById('loading').style.display = 'none';
       document.getElementById('error').textContent = message;
       document.getElementById('error').style.display = 'block'; } // Initialize
-      when page loads init();
+      when page loads if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init); } else { init(); }
     </script>
   </body>
 </html>
