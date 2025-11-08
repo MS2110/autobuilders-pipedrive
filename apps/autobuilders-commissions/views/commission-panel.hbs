@@ -1,538 +1,252 @@
-<!DOCTYPE html>
 <html>
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Commission Calculator</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      font-size: 14px;
-      line-height: 1.5;
-      color: #333;
-      padding: 16px;
-      background: #f9fafb;
-    }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-    h2 {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 16px;
-      color: #1a1a1a;
-    }
-    h3 {
-      font-size: 16px;
-      font-weight: 600;
-      margin-top: 24px;
-      margin-bottom: 12px;
-      color: #1a1a1a;
-    }
-    .summary-card {
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 16px;
-    }
-    .summary-item {
-      display: flex;
-      flex-direction: column;
-    }
-    .summary-label {
-      font-size: 12px;
-      color: #6b7280;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .summary-value {
-      font-size: 20px;
-      font-weight: 600;
-      color: #1a1a1a;
-    }
-    .table-container {
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      overflow: hidden;
-      margin-bottom: 16px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th {
-      background: #f9fafb;
-      padding: 12px;
-      text-align: left;
-      font-weight: 600;
-      font-size: 12px;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    td {
-      padding: 12px;
-      border-bottom: 1px solid #f3f4f6;
-    }
-    tr:last-child td {
-      border-bottom: none;
-    }
-    tr:hover {
-      background: #f9fafb;
-    }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 500;
-      text-transform: uppercase;
-    }
-    .badge-deposit {
-      background: #dbeafe;
-      color: #1e40af;
-    }
-    .badge-total {
-      background: #d1fae5;
-      color: #065f46;
-    }
-    .currency {
-      font-family: 'Courier New', monospace;
-      font-weight: 500;
-    }
-    .btn {
-      display: inline-block;
-      padding: 8px 16px;
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn:hover {
-      background: #1d4ed8;
-    }
-    .btn:disabled {
-      background: #9ca3af;
-      cursor: not-allowed;
-    }
-    .btn-secondary {
-      background: white;
-      color: #374151;
-      border: 1px solid #d1d5db;
-    }
-    .btn-secondary:hover {
-      background: #f9fafb;
-    }
-    .input-group {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-    input[type="text"],
-    input[type="number"],
-    select {
-      padding: 8px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 14px;
-      flex: 1;
-    }
-    input[type="text"]:focus,
-    input[type="number"]:focus,
-    select:focus {
-      outline: none;
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-    }
-    .row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 8px;
-      padding: 8px;
-      background: #f9fafb;
-      border-radius: 6px;
-    }
-    .row input,
-    .row select {
-      margin: 0;
-    }
-    .btn-remove {
-      padding: 6px 12px;
-      background: #ef4444;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    .btn-remove:hover {
-      background: #dc2626;
-    }
-    .error {
-      background: #fee2e2;
-      border: 1px solid #fecaca;
-      color: #991b1b;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 16px;
-    }
-    .loading {
-      text-align: center;
-      padding: 40px;
-      color: #6b7280;
-    }
-    .config-editor {
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-    .total-row {
-      background: #f0fdf4 !important;
-      font-weight: 600;
-    }
-    .text-right {
-      text-align: right;
-    }
-    .small {
-      font-size: 12px;
-      color: #6b7280;
-    }
-    .debug-info {
-      background: #f3f4f6;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      padding: 12px;
-      margin-bottom: 16px;
-      font-family: monospace;
-      font-size: 12px;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>💰 Commission Calculator</h2>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Commission Calculator</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; } body { font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+      Cantarell, sans-serif; font-size: 14px; line-height: 1.5; color: #333;
+      padding: 16px; background: #f9fafb; } .container { max-width: 800px;
+      margin: 0 auto; } h2 { font-size: 18px; font-weight: 600; margin-bottom:
+      16px; color: #1a1a1a; } h3 { font-size: 16px; font-weight: 600;
+      margin-top: 24px; margin-bottom: 12px; color: #1a1a1a; } .summary-card {
+      function extractContextFromUrl() { const params = new
+      URLSearchParams(window.location.search); return { dealId:
+      params.get('dealId') || params.get('deal_id'), userId:
+      params.get('userId') || params.get('user_id'), companyId:
+      params.get('companyId') || params.get('company_id'), personId:
+      params.get('personId') || params.get('person_id'), organizationId:
+      params.get('orgId') || params.get('organization_id') ||
+      params.get('org_id'), }; } async function init() { try {
+      showDebug('Starting initialization...'); if (typeof
+      window.AppExtensionsSDK !== 'function') { showError('Pipedrive SDK global
+      not available'); return; } showDebug('Instantiating SDK...'); sdk = new
+      window.AppExtensionsSDK(); await sdk.initialize(); showDebug('SDK
+      initialized successfully'); let context; if (typeof sdk.getContext ===
+      'function') { try { context = await sdk.getContext(); showDebug('Context
+      retrieved via sdk.getContext'); } catch (contextError) {
+      showDebug('sdk.getContext failed: ' + contextError.message); } } if
+      (!context && sdk.context) { context = sdk.context; showDebug('Context read
+      from sdk.context'); } if (!context) { context = extractContextFromUrl();
+      showDebug('Context derived from URL params'); } showDebug('Context: ' +
+      JSON.stringify(context)); dealId = context?.dealId || context?.deal_id ||
+      null; selectedUserId = context?.userId || context?.user_id || null;
+      showDebug('Deal ID: ' + dealId + ', User ID: ' + selectedUserId); if
+      (!dealId) { showError('No deal ID available from SDK or URL'); return; }
+      await loadCommissionData(); } catch (error) {
+      console.error('Initialization error:', error); showDebug('Error: ' +
+      error.message); showDebug('Stack: ' + error.stack); showError('Failed to
+      initialize: ' + error.message); } } tr:last-child td { border-bottom:
+      none; } tr:hover { background: #f9fafb; } .badge { display: inline-block;
+      padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
+      text-transform: uppercase; } .badge-deposit { background: #dbeafe; color:
+      #1e40af; } .badge-total { background: #d1fae5; color: #065f46; } .currency
+      { font-family: 'Courier New', monospace; font-weight: 500; } .btn {
+      display: inline-block; padding: 8px 16px; background: #2563eb; color:
+      white; border: none; border-radius: 6px; font-size: 14px; font-weight:
+      500; cursor: pointer; transition: background 0.2s; } .btn:hover {
+      background: #1d4ed8; } .btn:disabled { background: #9ca3af; cursor:
+      not-allowed; } .btn-secondary { background: white; color: #374151; border:
+      1px solid #d1d5db; } .btn-secondary:hover { background: #f9fafb; }
+      .input-group { display: flex; gap: 8px; margin-bottom: 16px; }
+      input[type="text"], input[type="number"], select { padding: 8px 12px;
+      border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; flex: 1; }
+      input[type="text"]:focus, input[type="number"]:focus, select:focus {
+      outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99,
+      235, 0.1); } .row { display: flex; gap: 8px; align-items: center;
+      margin-bottom: 8px; padding: 8px; background: #f9fafb; border-radius: 6px;
+      } .row input, .row select { margin: 0; } .btn-remove { padding: 6px 12px;
+      background: #ef4444; color: white; border: none; border-radius: 4px;
+      cursor: pointer; font-size: 12px; } .btn-remove:hover { background:
+      #dc2626; } .error { background: #fee2e2; border: 1px solid #fecaca; color:
+      #991b1b; padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+      .loading { text-align: center; padding: 40px; color: #6b7280; }
+      .config-editor { background: white; border: 1px solid #e5e7eb;
+      border-radius: 8px; padding: 16px; margin-bottom: 16px; } .total-row {
+      background: #f0fdf4 !important; font-weight: 600; } .text-right {
+      text-align: right; } .small { font-size: 12px; color: #6b7280; }
+      .debug-info { background: #f3f4f6; border: 1px solid #d1d5db;
+      border-radius: 6px; padding: 12px; margin-bottom: 16px; font-family:
+      monospace; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>💰 Commission Calculator</h2>
 
-    <div id="loading" class="loading">
-      Loading deal information...
-    </div>
+      <div id="loading" class="loading">
+        Loading deal information...
+      </div>
 
-    <div id="error" class="error" style="display: none;"></div>
+      <div id="error" class="error" style="display: none;"></div>
 
-    <div id="debug" class="debug-info" style="display: none;"></div>
+      <div id="debug" class="debug-info" style="display: none;"></div>
 
-    <div id="content" style="display: none;">
-      <div class="summary-card">
-        <div class="summary-grid">
-          <div class="summary-item">
-            <span class="summary-label">Deal Value</span>
-            <span class="summary-value currency" id="dealValue">€0</span>
-          </div>
-          <div class="summary-item">
-            <span class="summary-label">Deposit (<span id="depositPercent">0</span>%)</span>
-            <span class="summary-value currency" id="depositAmount">€0</span>
-          </div>
-          <div class="summary-item">
-            <span class="summary-label">Remaining</span>
-            <span class="summary-value currency" id="remainingAmount">€0</span>
+      <div id="content" style="display: none;">
+        <div class="summary-card">
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="summary-label">Deal Value</span>
+              <span class="summary-value currency" id="dealValue">€0</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Deposit (<span
+                  id="depositPercent"
+                >0</span>%)</span>
+              <span class="summary-value currency" id="depositAmount">€0</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Remaining</span>
+              <span
+                class="summary-value currency"
+                id="remainingAmount"
+              >€0</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="config-editor">
-        <h3>Commission Configuration</h3>
-        <div id="commissionRows"></div>
-        <button class="btn btn-secondary" onclick="addRow()">+ Add Party</button>
-        <button class="btn" onclick="saveAndCalculate()" style="margin-left: 8px;">Calculate</button>
-      </div>
+        <div class="config-editor">
+          <h3>Commission Configuration</h3>
+          <div id="commissionRows"></div>
+          <button class="btn btn-secondary" onclick="addRow()">+ Add Party</button>
+          <button
+            class="btn"
+            onclick="saveAndCalculate()"
+            style="margin-left: 8px;"
+          >Calculate</button>
+        </div>
 
-      <div class="table-container">
-        <h3 style="padding: 16px; padding-bottom: 0;">Commission Breakdown</h3>
-        <table id="resultsTable">
-          <thead>
-            <tr>
-              <th>Party</th>
-              <th>Applies To</th>
-              <th class="text-right">Base Amount</th>
-              <th class="text-right">Rate</th>
-              <th class="text-right">% Amount</th>
-              <th class="text-right">Fixed</th>
-              <th class="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody id="resultsBody">
-          </tbody>
-        </table>
+        <div class="table-container">
+          <h3 style="padding: 16px; padding-bottom: 0;">Commission Breakdown</h3>
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>Party</th>
+                <th>Applies To</th>
+                <th class="text-right">Base Amount</th>
+                <th class="text-right">Rate</th>
+                <th class="text-right">% Amount</th>
+                <th class="text-right">Fixed</th>
+                <th class="text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody">
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
-  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@pipedrive/app-extensions-sdk@0.4.0/dist/index.js"></script>
-  <script>
-    let sdk;
-    let dealId;
-    let selectedUserId;
-    let commissionConfig = [];
-
-    function showDebug(message) {
-      const debugEl = document.getElementById('debug');
-      if (debugEl) {
-        debugEl.style.display = 'block';
-        debugEl.innerHTML += message + '<br>';
-      }
-      console.log('[DEBUG]', message);
-    }
-
-    async function init() {
-      try {
-        showDebug('Starting initialization...');
-        
-        // Wait for SDK to load
-        if (typeof window.AppExtensionsSDK === 'undefined') {
-          showDebug('Waiting for SDK to load...');
-          await new Promise((resolve, reject) => {
-            const checkSDK = setInterval(() => {
-              if (typeof window.AppExtensionsSDK !== 'undefined') {
-                clearInterval(checkSDK);
-                resolve();
-              }
-            }, 100);
-            
-            // Timeout after 5 seconds
-            setTimeout(() => {
-              clearInterval(checkSDK);
-              reject(new Error('Timeout waiting for Pipedrive SDK to load'));
-            }, 5000);
-          });
-        }
-
-        showDebug('SDK found, initializing...');
-        sdk = await window.AppExtensionsSDK.initialize();
-        showDebug('SDK initialized successfully');
-
-        const context = await sdk.getContext();
-        showDebug('Context: ' + JSON.stringify(context));
-
-        dealId = context.dealId;
-        selectedUserId = context.userId;
-        
-        showDebug('Deal ID: ' + dealId + ', User ID: ' + selectedUserId);
-
-        if (!dealId) {
-          showError('No deal ID found in context');
-          return;
-        }
-
-        await loadCommissionData();
-      } catch (error) {
-        console.error('Initialization error:', error);
-        showDebug('Error: ' + error.message);
-        showDebug('Stack: ' + error.stack);
-        showError('Failed to initialize: ' + error.message);
-      }
-    }
-
-    async function loadCommissionData() {
-      try {
-        showDebug('Fetching commission data...');
-        
-        const response = await fetch('/api/calculate-commission', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            dealId: dealId,
-            selectedUserId: selectedUserId
-          })
-        });
-
-        showDebug('Response status: ' + response.status);
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          showDebug('Error response: ' + errorText);
-          throw new Error('Failed to load commission data: ' + response.status);
-        }
-
-        const data = await response.json();
-        showDebug('Data received: ' + JSON.stringify(data));
-
-        commissionConfig = data.commissionConfig || [];
-        displaySummary(data);
-        renderCommissionRows();
-        displayResults(data.calculations || []);
-
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('content').style.display = 'block';
-      } catch (error) {
-        console.error('Error loading data:', error);
-        showDebug('Load error: ' + error.message);
-        showError('Failed to load commission data: ' + error.message);
-      }
-    }
-
-    function displaySummary(data) {
-      document.getElementById('dealValue').textContent = formatCurrency(data.dealValue);
-      document.getElementById('depositPercent').textContent = data.depositPercent.toFixed(0);
-      document.getElementById('depositAmount').textContent = formatCurrency(data.depositAmount);
-      document.getElementById('remainingAmount').textContent = formatCurrency(data.remainingAmount);
-    }
-
-    function renderCommissionRows() {
+    <script
+      src="https://cdn.jsdelivr.net/npm/@pipedrive/app-extensions-sdk@0/dist/index.umd.js"
+    ></script>
+    <script>
+      let sdk; let dealId; let selectedUserId; let commissionConfig = [];
+      function showDebug(message) { const debugEl =
+      document.getElementById('debug'); if (debugEl) { debugEl.style.display =
+      'block'; debugEl.innerHTML += message + '<br>'; } console.log('[DEBUG]',
+      message); } async function init() { try { showDebug('Starting
+      initialization...'); // Wait for SDK to load if (typeof
+      window.AppExtensionsSDK === 'undefined') { showDebug('Waiting for SDK to
+      load...'); await new Promise((resolve, reject) => { const checkSDK =
+      setInterval(() => { if (typeof window.AppExtensionsSDK !== 'undefined') {
+      clearInterval(checkSDK); resolve(); } }, 100); // Timeout after 5 seconds
+      setTimeout(() => { clearInterval(checkSDK); reject(new Error('Timeout
+      waiting for Pipedrive SDK to load')); }, 5000); }); } showDebug('SDK
+      found, initializing...'); sdk = await
+      window.AppExtensionsSDK.initialize(); showDebug('SDK initialized
+      successfully'); const context = await sdk.getContext();
+      showDebug('Context: ' + JSON.stringify(context)); dealId = context.dealId;
+      selectedUserId = context.userId; showDebug('Deal ID: ' + dealId + ', User
+      ID: ' + selectedUserId); if (!dealId) { showError('No deal ID found in
+      context'); return; } await loadCommissionData(); } catch (error) {
+      console.error('Initialization error:', error); showDebug('Error: ' +
+      error.message); showDebug('Stack: ' + error.stack); showError('Failed to
+      initialize: ' + error.message); } } async function loadCommissionData() {
+      try { showDebug('Fetching commission data...'); const response = await
+      fetch('/api/calculate-commission', { method: 'POST', headers: {
+      'Content-Type': 'application/json' }, body: JSON.stringify({ dealId:
+      dealId, selectedUserId: selectedUserId }) }); showDebug('Response status:
+      ' + response.status); if (!response.ok) { const errorText = await
+      response.text(); showDebug('Error response: ' + errorText); throw new
+      Error('Failed to load commission data: ' + response.status); } const data
+      = await response.json(); showDebug('Data received: ' +
+      JSON.stringify(data)); commissionConfig = data.commissionConfig || [];
+      displaySummary(data); renderCommissionRows();
+      displayResults(data.calculations || []);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block'; } catch
+      (error) { console.error('Error loading data:', error); showDebug('Load
+      error: ' + error.message); showError('Failed to load commission data: ' +
+      error.message); } } function displaySummary(data) {
+      document.getElementById('dealValue').textContent =
+      formatCurrency(data.dealValue);
+      document.getElementById('depositPercent').textContent =
+      data.depositPercent.toFixed(0);
+      document.getElementById('depositAmount').textContent =
+      formatCurrency(data.depositAmount);
+      document.getElementById('remainingAmount').textContent =
+      formatCurrency(data.remainingAmount); } function renderCommissionRows() {
       const container = document.getElementById('commissionRows');
-      container.innerHTML = '';
-
-      if (commissionConfig.length === 0) {
-        commissionConfig = [
-          { name: 'Mathieu', percent: 65, fixed: 0, appliesTo: 'total' },
-          { name: 'Sacha', percent: 35, fixed: 0, appliesTo: 'total' }
-        ];
-      }
-
-      commissionConfig.forEach((config, index) => {
-        const row = document.createElement('div');
-        row.className = 'row';
-        row.innerHTML = `
-          <input 
-            type="text" 
-            placeholder="Name" 
-            value="${config.name}"
-            onchange="updateConfig(${index}, 'name', this.value)" 
-            style="flex: 2;">
-          <input 
-            type="number" 
-            placeholder="%" 
-            value="${config.percent}"
-            onchange="updateConfig(${index}, 'percent', parseFloat(this.value))" 
-            style="flex: 1;">
-          <span class="small">%</span>
-          <input 
-            type="number" 
-            placeholder="Fixed" 
-            value="${config.fixed}"
-            onchange="updateConfig(${index}, 'fixed', parseFloat(this.value))" 
-            style="flex: 1;">
-          <span class="small">€</span>
-          <select onchange="updateConfig(${index}, 'appliesTo', this.value)" style="flex: 1;">
-            <option value="total" ${config.appliesTo === 'total' ? 'selected' : ''}>Total</option>
-            <option value="deposit" ${config.appliesTo === 'deposit' ? 'selected' : ''}>Deposit</option>
-          </select>
-          <button class="btn-remove" onclick="removeRow(${index})">✕</button>
-        `;
-        container.appendChild(row);
-      });
-    }
-
-    function updateConfig(index, field, value) {
-      commissionConfig[index][field] = value;
-    }
-
-    function addRow() {
-      commissionConfig.push({
-        name: '',
-        percent: 0,
-        fixed: 0,
-        appliesTo: 'total'
-      });
-      renderCommissionRows();
-    }
-
-    function removeRow(index) {
-      commissionConfig.splice(index, 1);
-      renderCommissionRows();
-    }
-
-    async function saveAndCalculate() {
-      try {
-        showDebug('Saving configuration...');
-        
-        // First, save the config back to Pipedrive
-        await sdk.execute('update', {
-          commission_config_json: JSON.stringify(commissionConfig)
-        });
-        
-        showDebug('Configuration saved, reloading...');
-        
-        // Then reload the calculations
-        await loadCommissionData();
-      } catch (error) {
-        console.error('Error saving:', error);
-        showDebug('Save error: ' + error.message);
-        showError('Failed to save configuration: ' + error.message);
-      }
-    }
-
-    function displayResults(calculations) {
-      const tbody = document.getElementById('resultsBody');
-      tbody.innerHTML = '';
-      let totalSum = 0;
-
-      calculations.forEach(calc => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td><strong>${calc.name}</strong></td>
-          <td><span class="badge badge-${calc.appliesTo}">${calc.appliesTo}</span></td>
-          <td class="text-right currency">${formatCurrency(calc.baseAmount)}</td>
-          <td class="text-right">${calc.percent}%</td>
-          <td class="text-right currency">${formatCurrency(calc.percentAmount)}</td>
-          <td class="text-right currency">${formatCurrency(calc.fixed)}</td>
-          <td class="text-right currency"><strong>${formatCurrency(calc.total)}</strong></td>
-        `;
-        tbody.appendChild(row);
-        totalSum += calc.total;
-      });
-
-      // Add total row
-      const totalRow = document.createElement('tr');
-      totalRow.className = 'total-row';
-      totalRow.innerHTML = `
-        <td colspan="6" class="text-right"><strong>TOTAL</strong></td>
-        <td class="text-right currency"><strong>${formatCurrency(totalSum)}</strong></td>
-      `;
-      tbody.appendChild(totalRow);
-    }
-
-    function formatCurrency(amount) {
-      return new Intl.NumberFormat('fr-FR', {
-        style: 'currency',
-        currency: 'EUR'
-      }).format(amount);
-    }
-
-    function showError(message) {
+      container.innerHTML = ''; if (commissionConfig.length === 0) {
+      commissionConfig = [ { name: 'Mathieu', percent: 65, fixed: 0, appliesTo:
+      'total' }, { name: 'Sacha', percent: 35, fixed: 0, appliesTo: 'total' } ];
+      } commissionConfig.forEach((config, index) => { const row =
+      document.createElement('div'); row.className = 'row'; row.innerHTML = `
+      <input type="text" placeholder="Name" value="${config.name}"
+      onchange="updateConfig(${index}, 'name', this.value)" style="flex: 2;">
+      <input type="number" placeholder="%" value="${config.percent}"
+      onchange="updateConfig(${index}, 'percent', parseFloat(this.value))"
+      style="flex: 1;"> <span class="small">%</span> <input type="number"
+      placeholder="Fixed" value="${config.fixed}"
+      onchange="updateConfig(${index}, 'fixed', parseFloat(this.value))"
+      style="flex: 1;"> <span class="small">€</span> <select
+      onchange="updateConfig(${index}, 'appliesTo', this.value)" style="flex:
+      1;"> <option value="total" ${config.appliesTo === 'total' ? 'selected' :
+      ''}>Total</option> <option value="deposit" ${config.appliesTo ===
+      'deposit' ? 'selected' : ''}>Deposit</option> </select> <button
+      class="btn-remove" onclick="removeRow(${index})">✕</button> `;
+      container.appendChild(row); }); } function updateConfig(index, field,
+      value) { commissionConfig[index][field] = value; } function addRow() {
+      commissionConfig.push({ name: '', percent: 0, fixed: 0, appliesTo: 'total'
+      }); renderCommissionRows(); } function removeRow(index) {
+      commissionConfig.splice(index, 1); renderCommissionRows(); } async
+      function saveAndCalculate() { try { showDebug('Saving configuration...');
+      if (sdk && typeof sdk.execute === 'function' &&
+      window.AppExtensionsSDK?.Command?.UPDATE) { await
+      sdk.execute(window.AppExtensionsSDK.Command.UPDATE, {
+      commission_config_json: JSON.stringify(commissionConfig) });
+      showDebug('Configuration saved via SDK command, reloading...'); } else {
+      showDebug('SDK update command unavailable. Skipping direct save; consider
+      implementing server-side persistence.'); } // Reload the calculations
+      regardless so UI reflects latest state await loadCommissionData(); } catch
+      (error) { console.error('Error saving:', error); showDebug('Save error: '
+      + error.message); showError('Failed to save configuration: ' +
+      error.message); } } function displayResults(calculations) { const tbody =
+      document.getElementById('resultsBody'); tbody.innerHTML = ''; let totalSum
+      = 0; calculations.forEach(calc => { const row =
+      document.createElement('tr'); row.innerHTML = `
+      <td><strong>${calc.name}</strong></td> <td><span class="badge
+      badge-${calc.appliesTo}">${calc.appliesTo}</span></td> <td
+      class="text-right currency">${formatCurrency(calc.baseAmount)}</td> <td
+      class="text-right">${calc.percent}%</td> <td class="text-right
+      currency">${formatCurrency(calc.percentAmount)}</td> <td class="text-right
+      currency">${formatCurrency(calc.fixed)}</td> <td class="text-right
+      currency"><strong>${formatCurrency(calc.total)}</strong></td> `;
+      tbody.appendChild(row); totalSum += calc.total; }); // Add total row const
+      totalRow = document.createElement('tr'); totalRow.className = 'total-row';
+      totalRow.innerHTML = ` <td colspan="6"
+      class="text-right"><strong>TOTAL</strong></td> <td class="text-right
+      currency"><strong>${formatCurrency(totalSum)}</strong></td> `;
+      tbody.appendChild(totalRow); } function formatCurrency(amount) { return
+      new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR'
+      }).format(amount); } function showError(message) {
       document.getElementById('loading').style.display = 'none';
       document.getElementById('error').textContent = message;
-      document.getElementById('error').style.display = 'block';
-    }
-
-    // Initialize when page loads
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
-    } else {
-      init();
-    }
-  </script>
-</body>
+      document.getElementById('error').style.display = 'block'; } // Initialize
+      when page loads if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init); } else { init(); }
+    </script>
+  </body>
 </html>
