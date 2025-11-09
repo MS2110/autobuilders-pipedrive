@@ -152,6 +152,21 @@ function toSafeScriptValue(value) {
   return JSON.stringify(value || null).replace(/</g, "\\u003c");
 }
 
+function parseSelectedIds(raw) {
+  if (!raw) {
+    return [];
+  }
+
+  if (Array.isArray(raw)) {
+    return raw.map((value) => String(value || "").trim()).filter(Boolean);
+  }
+
+  return String(raw)
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 passport.use(
   "pipedrive",
   new Strategy(
@@ -274,18 +289,30 @@ app.get("/extension/deal", async (req, res) => {
   res.setHeader("Content-Security-Policy", "frame-ancestors *");
 
   const decodedContext = decodePanelContext(req.query.context);
+  const selectedIdsFromQuery = parseSelectedIds(req.query.selectedIds);
+
+  const contextEntity = decodedContext && decodedContext.entity;
+  const contextSelectedIds = Array.isArray(decodedContext?.selectedIds)
+    ? decodedContext.selectedIds
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    : [];
 
   const selectedDealId = (() => {
     if (req.query.dealId) {
-      return req.query.dealId;
+      return String(req.query.dealId);
     }
 
-    if (decodedContext && Array.isArray(decodedContext.selectedIds)) {
-      return decodedContext.selectedIds[0];
+    if (selectedIdsFromQuery.length > 0) {
+      return selectedIdsFromQuery[0];
     }
 
-    if (decodedContext && decodedContext.entity && decodedContext.entity.id) {
-      return decodedContext.entity.id;
+    if (contextSelectedIds.length > 0) {
+      return contextSelectedIds[0];
+    }
+
+    if (contextEntity && contextEntity.id) {
+      return String(contextEntity.id);
     }
 
     return "";
@@ -296,6 +323,14 @@ app.get("/extension/deal", async (req, res) => {
     panelProps: toSafeScriptValue({
       dealId: selectedDealId,
       context: decodedContext,
+      selectedIds: selectedIdsFromQuery,
+      query: {
+        resource: req.query.resource || null,
+        view: req.query.view || null,
+        userId: req.query.userId || null,
+        companyId: req.query.companyId || null,
+        theme: req.query.theme || null,
+      },
     }),
   });
 });

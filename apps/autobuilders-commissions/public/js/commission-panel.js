@@ -776,6 +776,14 @@
     const { sdk, context } = await initializeSdk();
 
     let dealId = bootstrap.dealId || "";
+    if (
+      !dealId &&
+      Array.isArray(bootstrap.selectedIds) &&
+      bootstrap.selectedIds.length
+    ) {
+      dealId = bootstrap.selectedIds[0];
+    }
+
     let derivedContext =
       context && context.context ? context.context : context || null;
 
