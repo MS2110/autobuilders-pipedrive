@@ -1,80 +1,37 @@
-# Autobuilders Commissions – Pipedrive Deal Extension
+# Autobuilders Commissions – Clean Slate
 
-Internal tool to manage **commission breakdowns per deal** inside Pipedrive.
+This repository has been reset to the smallest possible Express app that satisfies the Pipedrive Custom UI requirement. The only thing it does right now is serve a deal panel page that handshakes with the App Extensions SDK.
 
-The app is a Node/Express web app that:
+Use this as a fresh starting point to rebuild the commissions experience.
 
-- Authenticates with Pipedrive via OAuth.
-- Adds a **Deal panel** (iframe) in Pipedrive.
-- Shows a **dynamic commission table** for the current deal.
-- Saves commission data back to Pipedrive in a custom field (JSON).
+## What is running?
 
-This README is written to help another AI / dev understand the project and extend it.
+- `GET /` → plain text health response so you can confirm the Render instance is alive.
+- `GET /extension/deal` → lightweight HTML file that loads the Pipedrive App Extensions SDK and prints the current deal ID once the handshake completes.
+- Static assets are served from `public/` (only `extension-deal.html` today).
 
----
+## Local development
 
-## 1. Business Context
+1. `npm install`
+2. `npm run dev`
+3. Visit `http://localhost:3000/extension/deal`
 
-We receive **incoming revenue** for a mission and split it between:
+When you hit the URL directly you will see a loading screen forever because Pipedrive is not present. Inside the CRM it will resolve to "Commissions panel ready" plus the deal ID.
 
-- The two main partners: **65% / 35%**
-- Optional third parties:
-  - e.g. **Malt** (usually **10%** of the **deposit only**)
-  - Extra developers or other partners
+## Deploying to Render
 
-Each deal might have different:
+- Build command: `npm install`
+- Start command: `npm start`
+- No environment variables are required yet.
 
-- Incoming revenue amount
-- Deposit percentage
-- Number of third parties
-- Percentages / fixed fees
-- Whether a line applies to the **total** or only the **deposit**
+## Wiring up the Pipedrive panel
 
-We need, **per deal**:
+In Developer Hub → App extensions → Deal detail view:
 
-- A quick way to edit this structure.
-- A computed breakdown:
-  - Amount for each party.
-  - Deposit vs remaining amounts.
-- A guarantee/check that the **sum of all third-party totals equals the incoming revenue.**
+1. Point the panel URL to `https://<your-service>.onrender.com/extension/deal`.
+2. Save.
+3. Refresh a deal in Pipedrive.
 
-This should be visible directly **inside the Pipedrive deal view**.
+If everything is set correctly the iframe will stop showing "Error loading iframe" and the console noise about cross-domain access becomes harmless warnings.
 
----
-
-## 2. High-Level Architecture
-
-- **Stack**
-  - Node.js + Express
-  - Server-rendered HTML/JS (no heavy frontend framework required)
-- **Hosting**
-  - Render Web Service
-    - `Build Command`: `npm install`
-    - `Start Command`: `npm start`
-- **Auth**
-  - Pipedrive OAuth 2.0
-  - Access token stored server-side (existing Hello-World logic)
-- **Data Storage**
-  - Pipedrive **Deal custom fields** (no external DB)
-  - Commission configuration stored as **JSON string** in one custom field
-
----
-
-## 3. Pipedrive Setup
-
-### 3.1 App (Developer Hub)
-
-- App type: **Private / Not published**
-- OAuth scopes: at least
-  - `deals:full`
-  - `users:read` (optional, if we ever map lines to Pipedrive users)
-- Callback URL:
-  - `https://<render-service>.onrender.com/auth/pipedrive/callback`
-
-Environment variables on Render:
-
-```env
-CLIENT_ID=<pipedrive-client-id>
-CLIENT_SECRET=<pipedrive-client-secret>
-CALLBACK_URL=https://<render-service>.onrender.com/auth/pipedrive/callback
-```
+From here you can incrementally add API endpoints, OAuth, and the full commission editor without carrying over the previous large codebase.
