@@ -259,6 +259,15 @@
           return null;
         }
 
+        function isTraversableCandidate(value) {
+          if (!value || typeof value !== "object") {
+            return false;
+          }
+
+          const tag = Object.prototype.toString.call(value);
+          return tag === "[object Object]" || tag === "[object Array]";
+        }
+
         function extractCustomField(context, fieldKey) {
           if (!context || typeof context !== "object") {
             return { value: null, source: null };
@@ -270,7 +279,7 @@
           let steps = 0;
 
           function enqueue(candidate, label) {
-            if (!candidate || typeof candidate !== "object") {
+            if (!isTraversableCandidate(candidate)) {
               return;
             }
             if (visited.has(candidate)) {
@@ -295,7 +304,7 @@
 
           while (queue.length && steps < MAX_STEPS) {
             const { node, label } = queue.shift();
-            if (!node || typeof node !== "object") {
+            if (!isTraversableCandidate(node)) {
               continue;
             }
 
@@ -306,11 +315,29 @@
             visited.add(node);
             steps += 1;
 
-            if (Object.prototype.hasOwnProperty.call(node, fieldKey)) {
-              return { value: node[fieldKey], source: label };
+            let hasField = false;
+            try {
+              hasField = Object.prototype.hasOwnProperty.call(node, fieldKey);
+            } catch (error) {
+              hasField = false;
             }
 
-            const values = Array.isArray(node) ? node : Object.values(node);
+            if (hasField) {
+              let fieldValue = null;
+              try {
+                fieldValue = node[fieldKey];
+              } catch (error) {
+                fieldValue = null;
+              }
+              return { value: fieldValue, source: label };
+            }
+
+            let values;
+            try {
+              values = Array.isArray(node) ? node : Object.values(node);
+            } catch (error) {
+              continue;
+            }
             values.forEach((value) => {
               if (value && typeof value === "object" && !visited.has(value)) {
                 enqueue(value, label);
