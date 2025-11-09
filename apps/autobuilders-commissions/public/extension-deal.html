@@ -59,6 +59,34 @@
         margin-top: 12px;
         color: rgba(226, 232, 240, 0.75);
       }
+
+      .field-block {
+        margin-top: 20px;
+        text-align: left;
+      }
+
+      .field-label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+
+      pre.field-value {
+        background: rgba(15, 23, 42, 0.55);
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 13px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 0;
+      }
+
+      pre.field-value.empty {
+        font-style: italic;
+        opacity: 0.7;
+      }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@pipedrive/app-extensions-sdk@0/dist/index.umd.js"></script>
   </head>
@@ -69,6 +97,8 @@
     </main>
     <script>
       (function () {
+        const COMMISSION_FIELD_KEY = "1a514f40d36407ecd675c76cc539481989400ac6";
+        const COMMISSION_FIELD_NAME = "commission_config_json";
         const root = document.getElementById("root");
 
         function getDealIdFromQuery() {
@@ -90,45 +120,272 @@
           return trimmed.length ? trimmed : null;
         }
 
+        function escapeHtml(value) {
+          return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+        }
+
         function extractDealId(context) {
           if (!context || typeof context !== "object") {
             return null;
           }
 
-          const candidates = [
-            context.dealId,
-            context.deal_id,
-            context.deal && context.deal.id,
-            context.itemId,
-            context.item && context.item.id,
-            context.entity && context.entity.id,
-            context.object && context.object.id,
-            Array.isArray(context.selectedIds) ? context.selectedIds[0] : null,
-            context.id,
-          ];
+          const contextsToCheck = [context];
+
+          if (context.context && typeof context.context === "object") {
+            contextsToCheck.push(context.context);
+          }
+
+          if (context.data && typeof context.data === "object") {
+            contextsToCheck.push(context.data);
+          }
+
+          const candidates = [];
+
+          function pushCandidate(value) {
+            const coerced = coerceId(value);
+            if (coerced && !candidates.includes(coerced)) {
+              candidates.push(coerced);
+            }
+          }
+
+          function collectFromCandidate(candidateContext) {
+            if (!candidateContext || typeof candidateContext !== "object") {
+              return;
+            }
+
+            pushCandidate(candidateContext.dealId);
+            pushCandidate(candidateContext.deal_id);
+
+            if (
+              candidateContext.deal &&
+              typeof candidateContext.deal === "object"
+            ) {
+              pushCandidate(candidateContext.deal.id);
+              pushCandidate(candidateContext.deal.dealId);
+              pushCandidate(candidateContext.deal.deal_id);
+            }
+
+            if (
+              candidateContext.currentDeal &&
+              typeof candidateContext.currentDeal === "object"
+            ) {
+              pushCandidate(candidateContext.currentDeal.id);
+            }
+
+            if (
+              candidateContext.object &&
+              typeof candidateContext.object === "object"
+            ) {
+              const object = candidateContext.object;
+              pushCandidate(object.dealId);
+              if (
+                object.type === "deal" ||
+                object.object === "deal" ||
+                object.entity === "deal" ||
+                object.entity_type === "deal"
+              ) {
+                pushCandidate(object.id);
+              }
+            }
+
+            if (
+              candidateContext.item &&
+              typeof candidateContext.item === "object"
+            ) {
+              const item = candidateContext.item;
+              pushCandidate(item.dealId);
+              if (!item.type || item.type === "deal") {
+                pushCandidate(item.id);
+              }
+            }
+
+            if (
+              candidateContext.entity &&
+              typeof candidateContext.entity === "object"
+            ) {
+              const entity = candidateContext.entity;
+              if (entity.type === "deal" || entity.entity === "deal") {
+                pushCandidate(entity.id);
+              }
+            }
+
+            if (Array.isArray(candidateContext.selectedIds)) {
+              candidateContext.selectedIds.forEach(pushCandidate);
+            }
+
+            if (Array.isArray(candidateContext.items)) {
+              candidateContext.items.forEach((item) => {
+                if (item && typeof item === "object") {
+                  pushCandidate(item.dealId);
+                  if (!item.type || item.type === "deal") {
+                    pushCandidate(item.id);
+                  }
+                }
+              });
+            }
+
+            if (Array.isArray(candidateContext.selectedItems)) {
+              candidateContext.selectedItems.forEach((item) => {
+                if (item && typeof item === "object") {
+                  pushCandidate(item.dealId);
+                  if (!item.type || item.type === "deal") {
+                    pushCandidate(item.id);
+                  }
+                }
+              });
+            }
+          }
+
+          contextsToCheck.forEach(collectFromCandidate);
+
+          const numericCandidate = candidates.find((value) =>
+            /^\d+$/.test(value)
+          );
+          if (numericCandidate) {
+            return numericCandidate;
+          }
 
           for (const candidate of candidates) {
-            const coerced = coerceId(candidate);
-            if (coerced) {
-              return coerced;
+            if (candidate) {
+              return candidate;
             }
           }
 
           return null;
         }
 
+        function extractCustomField(context, fieldKey) {
+          if (!context || typeof context !== "object") {
+            return { value: null, source: null };
+          }
+
+          const visited = new WeakSet();
+          const queue = [];
+          const MAX_STEPS = 400;
+          let steps = 0;
+
+          function enqueue(candidate, label) {
+            if (!candidate || typeof candidate !== "object") {
+              return;
+            }
+            if (visited.has(candidate)) {
+              return;
+            }
+            queue.push({ node: candidate, label });
+          }
+
+          enqueue(context, "sdk.initialize context");
+          enqueue(context.context, "context.context");
+          enqueue(context.data, "context.data");
+          enqueue(context.deal, "context.deal");
+          enqueue(context.object, "context.object");
+          enqueue(context.item, "context.item");
+          enqueue(context.currentDeal, "context.currentDeal");
+
+          if (Array.isArray(context.selectedItems)) {
+            context.selectedItems.forEach((item, index) => {
+              enqueue(item, `context.selectedItems[${index}]`);
+            });
+          }
+
+          while (queue.length && steps < MAX_STEPS) {
+            const { node, label } = queue.shift();
+            if (!node || typeof node !== "object") {
+              continue;
+            }
+
+            if (visited.has(node)) {
+              continue;
+            }
+
+            visited.add(node);
+            steps += 1;
+
+            if (Object.prototype.hasOwnProperty.call(node, fieldKey)) {
+              return { value: node[fieldKey], source: label };
+            }
+
+            const values = Array.isArray(node) ? node : Object.values(node);
+            values.forEach((value) => {
+              if (value && typeof value === "object" && !visited.has(value)) {
+                enqueue(value, label);
+              }
+            });
+          }
+
+          return { value: null, source: null };
+        }
+
+        function formatFieldValue(value) {
+          if (value === null || value === undefined || value === "") {
+            return { text: "Not set", isPlaceholder: true };
+          }
+
+          if (typeof value === "object") {
+            try {
+              return {
+                text: JSON.stringify(value, null, 2),
+                isPlaceholder: false,
+              };
+            } catch (error) {
+              return {
+                text: "[Unable to serialize value]",
+                isPlaceholder: true,
+              };
+            }
+          }
+
+          const raw = String(value);
+          const trimmed = raw.trim();
+
+          if (!trimmed) {
+            return { text: "Not set", isPlaceholder: true };
+          }
+
+          try {
+            const parsed = JSON.parse(trimmed);
+            return {
+              text: JSON.stringify(parsed, null, 2),
+              isPlaceholder: false,
+            };
+          } catch (error) {
+            return { text: raw, isPlaceholder: false };
+          }
+        }
+
         function showResult(result) {
+          const sourceLabel = result.source
+            ? escapeHtml(result.source)
+            : "unknown";
+          const fieldPresentation = formatFieldValue(result.fieldValue);
+          const fieldClass = fieldPresentation.isPlaceholder ? " empty" : "";
+          const fieldHint = result.fieldSource
+            ? `Field located via ${result.fieldSource}.`
+            : "Field not present in SDK context.";
+          const fieldText = escapeHtml(fieldPresentation.text);
+          const fieldHintText = escapeHtml(fieldHint);
+
           root.innerHTML = `
             <h1>Commissions panel ready.</h1>
-            <p class="deal-id">Deal ID: ${result.dealId}</p>
-            <p class="source-hint">Detected via ${result.source}.</p>
+            <p class="deal-id">Deal ID: ${escapeHtml(result.dealId)}</p>
+            <p class="source-hint">Detected via ${sourceLabel}.</p>
+            <div class="field-block">
+              <span class="field-label">${COMMISSION_FIELD_NAME}</span>
+              <pre class="field-value${fieldClass}">${fieldText}</pre>
+              <p class="source-hint">${fieldHintText}</p>
+            </div>
           `;
         }
 
         function showError(message) {
           root.innerHTML = `
             <h1 class="error">Unable to detect deal ID</h1>
-            <p>${message}</p>
+            <p>${escapeHtml(message)}</p>
             <p class="tips">Confirm this iframe is rendered inside a Deal panel.</p>
           `;
         }
@@ -138,7 +395,12 @@
 
           if (!window.AppExtensionsSDK) {
             if (fallbackId) {
-              showResult({ dealId: fallbackId, source: "query string" });
+              showResult({
+                dealId: fallbackId,
+                source: "query string",
+                fieldValue: null,
+                fieldSource: null,
+              });
               return;
             }
             showError("Pipedrive SDK is not available.");
@@ -171,11 +433,17 @@
 
           const dealIdFromContext = coerceId(extractDealId(context));
           const dealId = dealIdFromContext || fallbackId;
+          const { value: fieldValue, source: fieldSource } = extractCustomField(
+            context,
+            COMMISSION_FIELD_KEY
+          );
 
           if (dealId) {
             showResult({
               dealId,
               source: dealIdFromContext ? "Pipedrive context" : "query string",
+              fieldValue,
+              fieldSource,
             });
             return;
           }
