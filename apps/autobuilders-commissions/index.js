@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const passport = require("passport");
 const { Strategy } = require("passport-oauth2");
 
@@ -237,6 +238,32 @@ app.use(passport.initialize());
 app.use(async (req, res, next) => {
   req.user = await User.getById(1);
   next();
+});
+
+app.get("/vendor/app-extensions-sdk.js", (req, res, next) => {
+  const sdkFilePath = path.join(
+    __dirname,
+    "node_modules",
+    "@pipedrive",
+    "app-extensions-sdk",
+    "dist",
+    "index.umd.js"
+  );
+
+  fs.promises
+    .access(sdkFilePath, fs.constants.R_OK)
+    .then(() => {
+      res.type("application/javascript");
+      res.sendFile(sdkFilePath);
+    })
+    .catch((error) => {
+      console.error("Failed to serve App Extensions SDK", error.message);
+      res
+        .status(503)
+        .send(
+          "App Extensions SDK is not available. Run `npm install` to download dependencies."
+        );
+    });
 });
 
 // Remove this section on Glitch

@@ -35,6 +35,8 @@
     isLoading: true,
     isSaving: false,
     error: null,
+    requiresAuth: false,
+    authUrl: "/auth/pipedrive",
   };
 
   let heightFrame = null;
@@ -231,6 +233,19 @@
     try {
       const response = await fetch(`/api/deals/${dealId}/commission`);
 
+      if (response.status === 401) {
+        const payload = await response.json().catch(() => ({}));
+        state.requiresAuth = true;
+        state.authUrl =
+          payload.loginUrl || payload.authorizeUrl || "/auth/pipedrive";
+        state.error = null;
+        state.summary = null;
+        state.deal = null;
+        state.config = ensureConfig([]);
+        state.depositPercent = 0;
+        return;
+      }
+
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(
@@ -240,6 +255,7 @@
 
       const payload = await response.json();
 
+      state.requiresAuth = false;
       state.deal = payload.deal;
       state.dealValue =
         Number(payload.summary?.dealValue) || Number(payload.deal?.value) || 0;
@@ -257,6 +273,9 @@
       state.error = error.message || "Unable to load commission data";
       showToast(state.error, "error");
     } finally {
+      if (!state.requiresAuth) {
+        state.authUrl = "/auth/pipedrive";
+      }
       state.isLoading = false;
       render();
     }
@@ -270,6 +289,22 @@
           <p>Loading commission data…</p>
         </div>
       `;
+      scheduleHeightUpdate();
+      return;
+    }
+
+    if (state.requiresAuth) {
+      const authUrl = escapeHtml(state.authUrl || "/auth/pipedrive");
+      root.innerHTML = `
+        <div class="card">
+          <h2>Authorize access</h2>
+          <p>To load commissions we need to connect this app to your Pipedrive account. Open the authorization flow, grant access, then reload this panel.</p>
+          <div class="actions-bar" style="justify-content:flex-start">
+            <button class="button button-primary" data-action="start-auth" data-auth-url="${authUrl}">Connect Pipedrive</button>
+          </div>
+        </div>
+      `;
+      bindAuthActions();
       scheduleHeightUpdate();
       return;
     }
@@ -515,6 +550,22 @@
       retryBtn.addEventListener("click", () => {
         if (state.dealId) {
           loadData(state.dealId);
+        }
+      });
+    }
+  }
+
+  function bindAuthActions() {
+    const authButton = root.querySelector('[data-action="start-auth"]');
+
+    if (authButton) {
+      authButton.addEventListener("click", () => {
+        const url =
+          authButton.dataset.authUrl || state.authUrl || "/auth/pipedrive";
+
+        const opened = window.open(url, "_blank", "noopener");
+        if (!opened) {
+          window.location.href = url;
         }
       });
     }
