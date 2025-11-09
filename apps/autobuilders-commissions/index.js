@@ -11,6 +11,147 @@ User.createTable();
 
 const app = express();
 
+const DEFAULT_COMMISSION_LINES = [
+  {
+    id: "partner-primary",
+    name: "Partner A",
+    percent: 65,
+    fixed: 0,
+    appliesTo: "total",
+  },
+  {
+    id: "partner-secondary",
+    name: "Partner B",
+    percent: 35,
+    fixed: 0,
+    appliesTo: "total",
+  },
+];
+
+function roundCurrency(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function sanitizeCommissionConfig(rawConfig) {
+  if (!Array.isArray(rawConfig)) {
+    return [];
+  }
+
+  return rawConfig
+    .map((entry, index) => {
+      if (!entry) {
+        return null;
+      }
+
+      const name = typeof entry.name === "string" ? entry.name.trim() : "";
+
+      return {
+        id: entry.id || `line-${index + 1}`,
+        name: name || `Line ${index + 1}`,
+        appliesTo:
+          entry.appliesTo === "deposit"
+            ? "deposit"
+            : entry.appliesTo === "remaining"
+            ? "remaining"
+            : "total",
+        percent: Number(entry.percent) || 0,
+        fixed: Number(entry.fixed) || 0,
+      };
+    })
+    .filter(Boolean);
+}
+
+function ensureCommissionConfig(config) {
+  const cleaned = sanitizeCommissionConfig(config);
+  return cleaned.length > 0 ? cleaned : DEFAULT_COMMISSION_LINES;
+}
+
+function calculateCommissionSummary(
+  dealValueInput,
+  depositPercentInput,
+  configInput
+) {
+  const dealValue = roundCurrency(dealValueInput);
+  const depositPercentRaw = Number(depositPercentInput) || 0;
+  const depositPercent = Math.min(Math.max(depositPercentRaw, 0), 100);
+  const commissionConfig = ensureCommissionConfig(configInput);
+
+  const depositAmount = roundCurrency((dealValue * depositPercent) / 100);
+  const remainingAmount = roundCurrency(dealValue - depositAmount);
+
+  let totalDisbursed = 0;
+
+  const lines = commissionConfig.map((entry) => {
+    const baseAmount =
+      entry.appliesTo === "deposit"
+        ? depositAmount
+        : entry.appliesTo === "remaining"
+        ? remainingAmount
+        : dealValue;
+    const percentAmount = roundCurrency(
+      (baseAmount * (entry.percent || 0)) / 100
+    );
+    const total = roundCurrency(percentAmount + (entry.fixed || 0));
+
+    totalDisbursed += total;
+
+    return {
+      ...entry,
+      baseAmount,
+      percentAmount,
+      total,
+    };
+  });
+
+  totalDisbursed = roundCurrency(totalDisbursed);
+  const differenceToDealValue = roundCurrency(dealValue - totalDisbursed);
+  const matchesDealValue = Math.abs(differenceToDealValue) < 0.01;
+
+  return {
+    dealValue,
+    depositPercent,
+    depositAmount,
+    remainingAmount,
+    totalDisbursed,
+    differenceToDealValue,
+    matchesDealValue,
+    commissionConfig,
+    lines,
+  };
+}
+
+function getAuthenticatedUser(req) {
+  if (!req.user) {
+    return null;
+  }
+
+  const stored = Array.isArray(req.user) ? req.user[0] : req.user;
+
+  if (!stored || !stored.access_token) {
+    return null;
+  }
+
+  return stored;
+}
+
+function decodePanelContext(contextParam) {
+  if (!contextParam) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(contextParam, "base64").toString("utf-8");
+    return JSON.parse(decoded);
+  } catch (error) {
+    console.warn("Failed to decode panel context", error.message);
+    return null;
+  }
+}
+
+function toSafeScriptValue(value) {
+  return JSON.stringify(value || null).replace(/</g, "\\u003c");
+}
+
 passport.use(
   "pipedrive",
   new Strategy(
@@ -119,7 +260,10 @@ app.get("/deals/:id", async (req, res) => {
 
   res.render("commission-panel", {
     layout: false,
-    dealId: req.params.id,
+    panelProps: toSafeScriptValue({
+      dealId: req.params.id,
+      context: null,
+    }),
   });
 });
 
@@ -129,102 +273,179 @@ app.get("/extension/deal", async (req, res) => {
   res.setHeader("X-Frame-Options", "ALLOWALL");
   res.setHeader("Content-Security-Policy", "frame-ancestors *");
 
+  const decodedContext = decodePanelContext(req.query.context);
+
+  const selectedDealId = (() => {
+    if (req.query.dealId) {
+      return req.query.dealId;
+    }
+
+    if (decodedContext && Array.isArray(decodedContext.selectedIds)) {
+      return decodedContext.selectedIds[0];
+    }
+
+    if (decodedContext && decodedContext.entity && decodedContext.entity.id) {
+      return decodedContext.entity.id;
+    }
+
+    return "";
+  })();
+
   res.render("commission-panel", {
     layout: false,
+    panelProps: toSafeScriptValue({
+      dealId: selectedDealId,
+      context: decodedContext,
+    }),
   });
 });
 
 // API endpoint to calculate commissions
 app.post("/api/calculate-commission", async (req, res) => {
   try {
-    console.log("=== Calculate Commission Request ===");
-    console.log("Body:", req.body);
-    console.log("User:", req.user);
+    const { dealValue, depositPercent, commissionConfig } = req.body || {};
 
-    const { dealId, selectedUserId } = req.body;
-
-    if (!dealId || !selectedUserId) {
-      console.log("Missing dealId or selectedUserId");
-      return res
-        .status(400)
-        .json({ error: "Missing dealId or selectedUserId" });
-    }
-
-    if (!req.user || req.user.length < 1 || !req.user[0].access_token) {
-      console.log("No authenticated user found");
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    console.log("Fetching deal:", dealId);
-    const deal = await api.getDealById(dealId, req.user[0].access_token);
-    console.log("Deal response:", deal);
-
-    if (!deal.success) {
-      console.log("Deal not found");
-      return res.status(404).json({ error: "Deal not found" });
-    }
-
-    const dealData = deal.data;
-    const dealValue = dealData.value || 0;
-
-    console.log("Deal value:", dealValue);
-    console.log("Deal data keys:", Object.keys(dealData));
-
-    // Get commission config from custom field
-    let commissionConfig = [];
-    if (dealData.commission_config_json) {
-      try {
-        commissionConfig = JSON.parse(dealData.commission_config_json);
-        console.log("Commission config loaded:", commissionConfig);
-      } catch (e) {
-        console.log("Failed to parse commission config:", e.message);
-        commissionConfig = [];
-      }
-    } else {
-      console.log("No commission_config_json field found");
-    }
-
-    // Get deposit percentage (assuming it's a custom field)
-    const depositPercent = dealData.deposit_percent || 0;
-    const depositAmount = (dealValue * depositPercent) / 100;
-    const remainingAmount = dealValue - depositAmount;
-
-    console.log("Deposit percent:", depositPercent);
-
-    // Calculate commissions for each party
-    const calculations = commissionConfig.map((party) => {
-      const baseAmount =
-        party.appliesTo === "deposit" ? depositAmount : dealValue;
-      const percentAmount = (baseAmount * party.percent) / 100;
-      const total = percentAmount + party.fixed;
-
-      return {
-        name: party.name,
-        percent: party.percent,
-        fixed: party.fixed,
-        appliesTo: party.appliesTo,
-        baseAmount: baseAmount,
-        percentAmount: percentAmount,
-        total: total,
-      };
-    });
-
-    console.log("Calculations:", calculations);
+    const summary = calculateCommissionSummary(
+      dealValue,
+      depositPercent,
+      commissionConfig
+    );
 
     res.json({
       success: true,
-      dealValue: dealValue,
-      depositPercent: depositPercent,
-      depositAmount: depositAmount,
-      remainingAmount: remainingAmount,
-      calculations: calculations,
-      commissionConfig: commissionConfig,
+      summary,
     });
   } catch (error) {
     console.error("Error calculating commission:", error);
-    console.error("Error stack:", error.stack);
     res.status(500).json({
       error: "Failed to calculate commission",
+      details: error.message,
+    });
+  }
+});
+
+app.get("/api/deals/:dealId/commission", async (req, res) => {
+  try {
+    const user = getAuthenticatedUser(req);
+
+    if (!user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const dealId = req.params.dealId;
+    const dealResponse = await api.getDealById(dealId, user.access_token);
+
+    if (!dealResponse.success) {
+      return res.status(404).json({ error: "Deal not found" });
+    }
+
+    const deal = dealResponse.data;
+    const parsedConfig = (() => {
+      if (!deal.commission_config_json) {
+        return [];
+      }
+
+      try {
+        return JSON.parse(deal.commission_config_json);
+      } catch (error) {
+        console.warn("Failed to parse commission_config_json", error.message);
+        return [];
+      }
+    })();
+
+    const summary = calculateCommissionSummary(
+      deal.value || 0,
+      deal.deposit_percent || 0,
+      parsedConfig
+    );
+
+    res.json({
+      success: true,
+      deal: {
+        id: deal.id,
+        title: deal.title,
+        value: summary.dealValue,
+        currency: deal.currency || "EUR",
+        visibleDealUrl: deal.public_link || deal.url || null,
+      },
+      summary,
+    });
+  } catch (error) {
+    console.error("Error loading commission data:", error);
+    res.status(500).json({
+      error: "Failed to load commission data",
+      details: error.message,
+    });
+  }
+});
+
+app.put("/api/deals/:dealId/commission", async (req, res) => {
+  try {
+    const user = getAuthenticatedUser(req);
+
+    if (!user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const dealId = req.params.dealId;
+    const { commissionConfig, depositPercent } = req.body || {};
+
+    const sanitizedConfig = ensureCommissionConfig(commissionConfig);
+    const dealResponse = await api.getDealById(dealId, user.access_token);
+
+    if (!dealResponse.success) {
+      return res.status(404).json({ error: "Deal not found" });
+    }
+
+    const deal = dealResponse.data;
+    const summary = calculateCommissionSummary(
+      deal.value || 0,
+      depositPercent,
+      sanitizedConfig
+    );
+
+    if (!summary.matchesDealValue) {
+      return res.status(422).json({
+        error: "Commission totals do not match deal value",
+        summary,
+      });
+    }
+
+    await api.updateDealFields(
+      dealId,
+      {
+        commission_config_json: JSON.stringify(sanitizedConfig),
+        deposit_percent: summary.depositPercent,
+      },
+      user.access_token
+    );
+
+    const refreshedResponse = await api.getDealById(dealId, user.access_token);
+
+    if (!refreshedResponse.success) {
+      return res.status(200).json({
+        success: true,
+        message: "Saved, but failed to reload deal",
+        summary,
+      });
+    }
+
+    const refreshedDeal = refreshedResponse.data;
+    const refreshedSummary = calculateCommissionSummary(
+      refreshedDeal.value || summary.dealValue,
+      refreshedDeal.deposit_percent || summary.depositPercent,
+      sanitizedConfig
+    );
+
+    res.json({
+      success: true,
+      message: "Commission settings saved",
+      summary: refreshedSummary,
+    });
+  } catch (error) {
+    console.error("Error saving commission data:", error);
+    res.status(500).json({
+      error: "Failed to save commission data",
       details: error.message,
     });
   }
