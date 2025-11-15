@@ -1,7 +1,10 @@
 module.exports = {
-  clientID: process.env.CLIENT_ID || "",
-  clientSecret: process.env.CLIENT_SECRET || "",
-  callbackURL: process.env.CALLBACK_URL || "",
+  clientID: process.env.CLIENT_ID || "548e5347ad3baa84",
+  clientSecret:
+    process.env.CLIENT_SECRET || "940ee5f5ee795030105f6d7ddb13cfb44afad190",
+  callbackURL:
+    process.env.CALLBACK_URL ||
+    "https://autobuilders-commissions.onrender.com/auth/pipedrive/callback",
   commissionFieldKey:
     process.env.COMMISSION_FIELD_KEY ||
     "1a514f40d36407ecd675c76cc539481989400ac6",
