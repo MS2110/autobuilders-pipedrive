@@ -1,3 +1,7 @@
+[ { "name": "Mathieu", "percent": 65, "fixed": 0, "appliesTo": "total" }, {
+"name": "Sacha", "percent": 35, "fixed": 0, "appliesTo": "total" }, { "name":
+"Malt", "percent": 10, "fixed": 0, "appliesTo": "deposit" } ]
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -759,14 +763,51 @@
           dealValue,
           depositPercent
         ) {
-          const depositAmount = (dealValue * depositPercent) / 100;
-          const remainingAmount = dealValue - depositAmount;
+          const originalDepositAmount = (dealValue * depositPercent) / 100;
+          const originalRemainingAmount = dealValue - originalDepositAmount;
 
+          // First pass: calculate fixed amounts and deposit-only commissions
+          let totalFixedAmounts = 0;
+          let totalDepositOnlyCommissions = 0;
+
+          commissionConfig.forEach((config) => {
+            totalFixedAmounts += config.fixed || 0;
+
+            if (config.appliesTo === "deposit") {
+              const depositCommission =
+                (originalDepositAmount * config.percent) / 100;
+              totalDepositOnlyCommissions += depositCommission;
+            }
+          });
+
+          // Calculate the adjusted base for "total" commissions
+          // Deal value minus fixed amounts minus deposit-only commissions
+          const adjustedBaseForTotal =
+            dealValue - totalFixedAmounts - totalDepositOnlyCommissions;
+          const adjustedDepositForTotal =
+            originalDepositAmount - totalDepositOnlyCommissions;
+          const adjustedRemainingForTotal =
+            adjustedBaseForTotal - adjustedDepositForTotal;
+
+          // Second pass: calculate actual commissions
           const commissions = commissionConfig.map((config) => {
-            const baseAmount =
-              config.appliesTo === "deposit" ? depositAmount : dealValue;
-            const percentAmount = (baseAmount * config.percent) / 100;
             const fixedAmount = config.fixed || 0;
+            let percentAmount = 0;
+            let onDeposit = 0;
+            let onRemaining = 0;
+
+            if (config.appliesTo === "deposit") {
+              // Deposit-only: calculate on original deposit amount
+              percentAmount = (originalDepositAmount * config.percent) / 100;
+              onDeposit = percentAmount;
+              onRemaining = 0;
+            } else {
+              // Total: calculate on adjusted base (excluding fixed and deposit-only)
+              percentAmount = (adjustedBaseForTotal * config.percent) / 100;
+              onDeposit = (adjustedDepositForTotal * config.percent) / 100;
+              onRemaining = (adjustedRemainingForTotal * config.percent) / 100;
+            }
+
             const total = percentAmount + fixedAmount;
 
             return {
@@ -774,14 +815,8 @@
               percent: config.percent,
               fixed: fixedAmount,
               appliesTo: config.appliesTo || "total",
-              depositAmount:
-                config.appliesTo === "deposit"
-                  ? percentAmount
-                  : (depositAmount * config.percent) / 100,
-              remainingAmount:
-                config.appliesTo === "deposit"
-                  ? 0
-                  : (remainingAmount * config.percent) / 100,
+              depositAmount: onDeposit,
+              remainingAmount: onRemaining,
               total: total,
             };
           });
@@ -794,8 +829,8 @@
           return {
             commissions,
             dealValue,
-            depositAmount,
-            remainingAmount,
+            depositAmount: originalDepositAmount,
+            remainingAmount: originalRemainingAmount,
             totalCommissions,
             isValid: Math.abs(totalCommissions - dealValue) < 0.01,
           };
