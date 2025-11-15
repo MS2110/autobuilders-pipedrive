@@ -642,6 +642,14 @@
 
           const payload = await response.json().catch(() => ({}));
 
+          console.log("=== API Response Debug ===");
+          console.log("Response status:", response.status);
+          console.log("Response OK:", response.ok);
+          console.log("Full payload from API:", payload);
+          console.log("payload.summary:", payload.summary);
+          console.log("payload.deal:", payload.deal);
+          console.log("=========================");
+
           if (!response.ok) {
             const error = new Error(
               payload.error ||
