@@ -606,10 +606,100 @@
 
         function showError(message) {
           root.innerHTML = `
-        function showResult(result) {
+            <h1 class="error">Unable to load commissions</h1>
             <p>${escapeHtml(message)}</p>
             <p class="tips">Confirm this iframe is rendered inside a Deal panel.</p>
           `;
+        }
+
+        function showAuthRequired(authUrl) {
+          const authorizeUrl = escapeHtml(authUrl || "/auth/pipedrive");
+
+          root.innerHTML = `
+            <h1>Connect Autobuilders Commissions</h1>
+            <p>We need permission to read and update the commission configuration on this deal.</p>
+            <p class="tips">Open the authorization flow, grant access, then reload this panel.</p>
+            <p>
+              <a
+                href="${authorizeUrl}"
+                target="_blank"
+                rel="noreferrer"
+                style="display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;margin-top:12px;border-radius:8px;background:#38bdf8;color:#0f172a;font-weight:600;text-decoration:none;"
+              >Authorize app</a>
+            </p>
+          `;
+        }
+
+        async function fetchCommissionSummary(dealId) {
+          const response = await fetch(
+            `/api/deals/${encodeURIComponent(dealId)}/commission`,
+            {
+              headers: {
+                Accept: "application/json",
+              },
+            }
+          );
+
+          const payload = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            const error = new Error(
+              payload.error ||
+                `Failed to load commission configuration (HTTP ${response.status})`
+            );
+            error.status = response.status;
+            error.payload = payload;
+            error.authUrl =
+              payload.loginUrl || payload.authorizeUrl || "/auth/pipedrive";
+            throw error;
+          }
+
+          return payload;
+        }
+
+        async function renderDealFromApi(
+          dealId,
+          detectionSource,
+          fallbackField,
+          fallbackFieldSource,
+          fallbackDealName
+        ) {
+          try {
+            const payload = await fetchCommissionSummary(dealId);
+            const dealName =
+              payload?.deal?.title ||
+              payload?.deal?.name ||
+              fallbackDealName ||
+              null;
+
+            showResult({
+              dealId,
+              source: detectionSource,
+              fieldValue: payload.summary || fallbackField,
+              fieldSource: "Fetched via Autobuilders API",
+              dealName,
+            });
+          } catch (error) {
+            console.error("Failed to fetch commission summary", error);
+
+            if (error.status === 401) {
+              showAuthRequired(error.authUrl);
+              return;
+            }
+
+            if (fallbackField !== null && fallbackField !== undefined) {
+              showResult({
+                dealId,
+                source: detectionSource,
+                fieldValue: fallbackField,
+                fieldSource: fallbackFieldSource,
+                dealName: fallbackDealName,
+              });
+              return;
+            }
+
+            showError(error.message || "Unable to load commission data");
+          }
         }
 
         async function initialize() {
@@ -638,89 +728,6 @@
             const initResult = await sdk.initialize();
             if (initResult && typeof initResult === "object") {
               context = initResult.context || initResult.data || initResult;
-            }
-
-            function showAuthRequired(authUrl) {
-              const authorizeUrl = escapeHtml(authUrl || "/auth/pipedrive");
-
-              root.innerHTML = `
-            <h1>Connect Autobuilders Commissions</h1>
-            <p>We need permission to read and update the commission configuration on this deal.</p>
-            <p class="tips">Open the authorization flow, grant access, then reload this panel.</p>
-            <p><a class="button" href="${authorizeUrl}" target="_blank" rel="noreferrer">Authorize app</a></p>
-          `;
-            }
-
-            async function fetchCommissionSummary(dealId) {
-              const response = await fetch(
-                `/api/deals/${encodeURIComponent(dealId)}/commission`,
-                {
-                  headers: {
-                    Accept: "application/json",
-                  },
-                }
-              );
-
-              const payload = await response.json().catch(() => ({}));
-
-              if (!response.ok) {
-                const error = new Error(
-                  payload.error ||
-                    `Failed to load commission configuration (HTTP ${response.status})`
-                );
-                error.status = response.status;
-                error.payload = payload;
-                error.authUrl =
-                  payload.loginUrl || payload.authorizeUrl || "/auth/pipedrive";
-                throw error;
-              }
-
-              return payload;
-            }
-
-            async function renderDealFromApi(
-              dealId,
-              detectionSource,
-              fallbackField,
-              fallbackFieldSource,
-              fallbackDealName
-            ) {
-              try {
-                const payload = await fetchCommissionSummary(dealId);
-                const dealName =
-                  payload?.deal?.title ||
-                  payload?.deal?.name ||
-                  fallbackDealName ||
-                  null;
-
-                showResult({
-                  dealId,
-                  source: detectionSource,
-                  fieldValue: payload.summary || fallbackField,
-                  fieldSource: "Fetched via Autobuilders API",
-                  dealName,
-                });
-              } catch (error) {
-                console.error("Failed to fetch commission summary", error);
-
-                if (error.status === 401) {
-                  showAuthRequired(error.authUrl);
-                  return;
-                }
-
-                if (fallbackField !== null && fallbackField !== undefined) {
-                  showResult({
-                    dealId,
-                    source: detectionSource,
-                    fieldValue: fallbackField,
-                    fieldSource: fallbackFieldSource,
-                    dealName: fallbackDealName,
-                  });
-                  return;
-                }
-
-                showError(error.message || "Unable to load commission data");
-              }
             }
           } catch (error) {
             console.warn("Pipedrive SDK initialize failed", error);
