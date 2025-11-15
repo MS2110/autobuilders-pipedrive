@@ -587,6 +587,14 @@
       }
     }
 
+    const dealValue = Number(result.dealValue) || 0;
+    const depositPercent = Number(result.depositPercent) || 0;
+    const calculations = calculateCommissions(
+      commissionConfig,
+      dealValue,
+      depositPercent
+    );
+
     const metrics = [
       {
         label: "Deal value",
