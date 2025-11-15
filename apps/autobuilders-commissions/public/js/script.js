@@ -569,10 +569,6 @@
   }
 
   function showResult(result) {
-    const dealNameLabel = result.dealName
-      ? escapeHtml(result.dealName)
-      : "Unknown deal";
-
     // Parse commission config
     let commissionConfig = [];
     if (result.commissionConfig) {
@@ -591,129 +587,151 @@
       }
     }
 
-    const dealValue = result.dealValue || 0;
-    const depositPercent = result.depositPercent || 0;
+    const metrics = [
+      {
+        label: "Deal value",
+        value: formatCurrency(calculations.dealValue),
+      },
+      {
+        label:
+          depositPercent && !Number.isNaN(depositPercent)
+            ? `Deposit (${depositPercent}%)`
+            : "Deposit",
+        value: formatCurrency(calculations.depositAmount),
+      },
+      {
+        label: "Remaining",
+        value: formatCurrency(calculations.remainingAmount),
+      },
+      {
+        label: "Total commissions",
+        value: formatCurrency(calculations.totalCommissions),
+        note: calculations.isValid ? "Matches deal value" : "Needs review",
+      },
+    ];
 
-    // Calculate commissions
-    const calculations = calculateCommissions(
-      commissionConfig,
-      dealValue,
-      depositPercent
-    );
+    const metricsHTML = metrics
+      .map(
+        (metric) => `
+              <div class="metric-card">
+                <span class="metric-label">${escapeHtml(metric.label)}</span>
+                <span class="metric-value">${metric.value}</span>
+                ${
+                  metric.note
+                    ? `<span class="metric-note">${escapeHtml(
+                        metric.note
+                      )}</span>`
+                    : ""
+                }
+              </div>
+            `
+      )
+      .join("");
 
-    // Generate commission items HTML
-    const commissionsHTML = calculations.commissions
+    const commissionRows = calculations.commissions
       .map((commission) => {
-        let badge = "";
-        if (commission.appliesTo === "deposit") {
-          if (commission.substractOtherDepostit) {
-            badge =
-              '<span class="commission-badge deposit">Deposit (Net)</span>';
-          } else {
-            badge =
-              '<span class="commission-badge deposit">Deposit Only</span>';
-          }
-        } else {
-          badge = '<span class="commission-badge">Total</span>';
-        }
+        const appliesBadgeText =
+          commission.appliesTo === "deposit"
+            ? commission.substractOtherDepostit
+              ? "Deposit · net"
+              : "Deposit · gross"
+            : "Full deal";
 
-        const fixedDisplay =
+        const badgeTexts = [
+          appliesBadgeText,
+          commission.percent !== undefined && commission.percent !== null
+            ? `${commission.percent}% rate`
+            : null,
           commission.fixed > 0
-            ? `<div class="commission-detail">
-                 <span class="commission-detail-label">Fixed Amount</span>
-                 <span class="commission-detail-value">${formatCurrency(
-                   commission.fixed
-                 )}</span>
-               </div>`
-            : "";
+            ? `+ ${formatCurrency(commission.fixed)} fixed`
+            : null,
+        ].filter(Boolean);
+
+        const badges = badgeTexts
+          .map(
+            (text) => `
+                  <span class="commission-badge">${escapeHtml(text)}</span>
+                `
+          )
+          .join("");
 
         return `
-            <div class="commission-item">
-              <div class="commission-header">
-                <div>
-                  <span class="commission-name">${escapeHtml(
-                    commission.name
-                  )}</span>
-                  ${badge}
+              <div class="commission-row">
+                <div class="commission-row-main">
+                  <div>
+                    <p class="commission-name">${escapeHtml(
+                      commission.name
+                    )}</p>
+                    <div class="commission-meta">${badges}</div>
+                  </div>
+                  <div class="commission-amount">${formatCurrency(
+                    commission.total
+                  )}</div>
                 </div>
-                <div class="commission-total">${formatCurrency(
-                  commission.total
-                )}</div>
+                <div class="commission-breakdown">
+                  <div class="breakdown-item">
+                    <span class="breakdown-label">Rate</span>
+                    <span class="breakdown-value">${
+                      commission.percent !== undefined &&
+                      commission.percent !== null
+                        ? `${commission.percent}%`
+                        : "—"
+                    }</span>
+                  </div>
+                  <div class="breakdown-item">
+                    <span class="breakdown-label">On deposit</span>
+                    <span class="breakdown-value">${formatCurrency(
+                      commission.depositAmount
+                    )}</span>
+                  </div>
+                  <div class="breakdown-item">
+                    <span class="breakdown-label">On remaining</span>
+                    <span class="breakdown-value">${formatCurrency(
+                      commission.remainingAmount
+                    )}</span>
+                  </div>
+                  <div class="breakdown-item">
+                    <span class="breakdown-label">Fixed</span>
+                    <span class="breakdown-value">${
+                      commission.fixed > 0
+                        ? formatCurrency(commission.fixed)
+                        : "—"
+                    }</span>
+                  </div>
+                </div>
               </div>
-              <div class="commission-details">
-                <div class="commission-detail">
-                  <span class="commission-detail-label">Commission %</span>
-                  <span class="commission-detail-value">${
-                    commission.percent
-                  }%</span>
-                </div>
-                ${fixedDisplay}
-                <div class="commission-detail">
-                  <span class="commission-detail-label">On Deposit</span>
-                  <span class="commission-detail-value">${formatCurrency(
-                    commission.depositAmount
-                  )}</span>
-                </div>
-                <div class="commission-detail">
-                  <span class="commission-detail-label">On Remaining</span>
-                  <span class="commission-detail-value">${formatCurrency(
-                    commission.remainingAmount
-                  )}</span>
-                </div>
-              </div>
-            </div>
-          `;
+            `;
       })
       .join("");
 
+    const commissionsHTML = commissionRows
+      ? `<div class="commission-list">${commissionRows}</div>`
+      : '<div class="empty-state">No commission configuration found</div>';
+
     const verificationClass = calculations.isValid ? "" : " error";
     const verificationMessage = calculations.isValid
-      ? "✓ Commissions equal deal value"
-      : "⚠ Commissions do not match deal value";
+      ? "Commissions match the deal value"
+      : "Review commission math";
 
     root.innerHTML = `
-          <h1>💰 Commission Breakdown</h1>
-          <p class="deal-name">${dealNameLabel}</p>
-          
-          <div class="summary-section">
-            <div class="summary-grid">
-              <div class="summary-card">
-                <div class="summary-card-label">Deal Value</div>
-                <div class="summary-card-value">${formatCurrency(
-                  calculations.dealValue
-                )}</div>
+          <div class="panel-stack">
+            <section class="section-card">
+              <div class="metrics-grid">
+                ${metricsHTML}
               </div>
-              <div class="summary-card">
-                <div class="summary-card-label">Deposit (${depositPercent}%)</div>
-                <div class="summary-card-value">${formatCurrency(
-                  calculations.depositAmount
-                )}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-card-label">Remaining</div>
-                <div class="summary-card-value">${formatCurrency(
-                  calculations.remainingAmount
-                )}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-card-label">Total Commissions</div>
-                <div class="summary-card-value">${formatCurrency(
-                  calculations.totalCommissions
-                )}</div>
-              </div>
-            </div>
+            </section>
 
-            <div class="summary-title">Commission Distribution</div>
-            <div class="commission-list">
-              ${
-                commissionsHTML ||
-                '<p style="text-align:center;color:rgba(226, 232, 240, 0.6);">No commission configuration found</p>'
-              }
-            </div>
+            <section class="section-card">
+              <div class="section-heading">
+                <span class="section-title">Commission distribution</span>
+                <span class="section-subtitle">Auto-calculated from commission configuration</span>
+              </div>
+              ${commissionsHTML}
+            </section>
 
-            <div class="verification-section${verificationClass}">
-              <div class="verification-label">Verification</div>
-              <div class="verification-value">${verificationMessage}</div>
+            <div class="validation${verificationClass}">
+              <span class="validation-label">Validation</span>
+              <span class="validation-value">${verificationMessage}</span>
             </div>
           </div>
         `;
@@ -739,7 +757,7 @@
               href="${authorizeUrl}"
               target="_blank"
               rel="noreferrer"
-              style="display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;margin-top:12px;border-radius:8px;background:#38bdf8;color:#0f172a;font-weight:600;text-decoration:none;"
+              style="display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;margin-top:12px;border-radius:999px;background:#1f2027;color:#ffffff;font-weight:600;text-decoration:none;"
             >Authorize app</a>
           </p>
         `;
