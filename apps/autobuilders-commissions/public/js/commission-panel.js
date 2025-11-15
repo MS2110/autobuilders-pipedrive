@@ -254,6 +254,34 @@
 
       const payload = await response.json();
 
+      if (typeof console !== "undefined") {
+        try {
+          console.groupCollapsed(
+            `[Commissions Panel] Raw API payload for deal ${dealId}`
+          );
+          console.log("Full payload:", payload);
+          console.log(
+            "Payload summary:",
+            payload.summary || "<no summary field present>"
+          );
+          console.log(
+            "Commission config from API:",
+            payload.summary?.commissionConfig || []
+          );
+          console.log(
+            "Deposit percent from API:",
+            payload.summary?.depositPercent ?? "<missing>"
+          );
+          console.log(
+            "Deal details from API:",
+            payload.deal || "<no deal field present>"
+          );
+          console.groupEnd();
+        } catch (loggingError) {
+          console.warn("Failed to log commission payload", loggingError);
+        }
+      }
+
       state.requiresAuth = false;
       state.deal = payload.deal;
       state.dealValue =
