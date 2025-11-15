@@ -762,34 +762,54 @@
           const originalDepositAmount = (dealValue * depositPercent) / 100;
           const originalRemainingAmount = dealValue - originalDepositAmount;
 
-          // First pass: calculate fixed amounts and deposit-only commissions (without substractOtherDepostit)
+          // First pass: calculate fixed amounts and ALL deposit-related fees
           let totalFixedAmounts = 0;
-          let totalDepositOnlyCommissions = 0;
+          let pureDepositCommissions = 0; // Malt-like fees without substractOtherDepostit
+          let netDepositCommissions = 0; // Mathieu-like fees with substractOtherDepostit
 
           commissionConfig.forEach((config) => {
             totalFixedAmounts += config.fixed || 0;
 
-            // Only count pure deposit commissions (without substractOtherDepostit flag)
-            if (
-              config.appliesTo === "deposit" &&
-              !config.substractOtherDepostit
-            ) {
-              const depositCommission =
-                (originalDepositAmount * config.percent) / 100;
-              totalDepositOnlyCommissions += depositCommission;
+            if (config.appliesTo === "deposit") {
+              if (!config.substractOtherDepostit) {
+                // Pure deposit commission (like Malt) - calculated on original deposit
+                const depositCommission =
+                  (originalDepositAmount * config.percent) / 100;
+                pureDepositCommissions += depositCommission;
+              }
             }
           });
 
-          // Calculate the adjusted base for "total" and "deposit with substractOtherDepostit" commissions
-          // Deal value minus fixed amounts minus deposit-only commissions
+          // Calculate adjusted deposit after pure deposit fees (for net deposit calculations)
+          const adjustedDepositForNet =
+            originalDepositAmount - pureDepositCommissions;
+
+          // Second pass: calculate net deposit commissions (with substractOtherDepostit flag)
+          commissionConfig.forEach((config) => {
+            if (
+              config.appliesTo === "deposit" &&
+              config.substractOtherDepostit
+            ) {
+              const netCommission =
+                (adjustedDepositForNet * config.percent) / 100;
+              netDepositCommissions += netCommission;
+            }
+          });
+
+          // Total of ALL deposit commissions
+          const totalAllDepositCommissions =
+            pureDepositCommissions + netDepositCommissions;
+
+          // Calculate the adjusted base for "total" commissions
+          // Deal value minus fixed amounts minus ALL deposit commissions
           const adjustedBaseForTotal =
-            dealValue - totalFixedAmounts - totalDepositOnlyCommissions;
+            dealValue - totalFixedAmounts - totalAllDepositCommissions;
           const adjustedDepositForTotal =
-            originalDepositAmount - totalDepositOnlyCommissions;
+            originalDepositAmount - totalAllDepositCommissions;
           const adjustedRemainingForTotal =
             adjustedBaseForTotal - adjustedDepositForTotal;
 
-          // Second pass: calculate actual commissions
+          // Third pass: calculate actual commissions for display
           const commissions = commissionConfig.map((config) => {
             const fixedAmount = config.fixed || 0;
             let percentAmount = 0;
@@ -798,9 +818,8 @@
 
             if (config.appliesTo === "deposit") {
               if (config.substractOtherDepostit) {
-                // Deposit with substractOtherDepostit: calculate on adjusted deposit (excluding other deposit fees)
-                percentAmount =
-                  (adjustedDepositForTotal * config.percent) / 100;
+                // Deposit with substractOtherDepostit: calculate on deposit minus pure deposit fees
+                percentAmount = (adjustedDepositForNet * config.percent) / 100;
                 onDeposit = percentAmount;
                 onRemaining = 0;
               } else {
@@ -810,7 +829,7 @@
                 onRemaining = 0;
               }
             } else {
-              // Total: calculate on adjusted base (excluding fixed and deposit-only)
+              // Total: calculate on adjusted base (excluding fixed and ALL deposit commissions)
               percentAmount = (adjustedBaseForTotal * config.percent) / 100;
               onDeposit = (adjustedDepositForTotal * config.percent) / 100;
               onRemaining = (adjustedRemainingForTotal * config.percent) / 100;
