@@ -198,19 +198,27 @@ function sanitizeCommissionConfig(rawConfig) {
     .map((entry, index) => {
       if (!entry) return null;
 
+      const appliesToRaw =
+        typeof entry.appliesTo === "string"
+          ? entry.appliesTo.toLowerCase()
+          : "";
       const appliesTo =
-        entry.appliesTo === "deposit"
+        appliesToRaw === "deposit"
           ? "deposit"
-          : entry.appliesTo === "remaining"
+          : appliesToRaw === "remaining"
           ? "remaining"
           : "total";
 
+      const percentValue = Number(entry.percent);
+      const fixedValue = Number(entry.fixed);
+
       return {
-        id: entry.id || `line-${index + 1}`,
+        id: String(entry.id || `line-${index + 1}`),
         name: String(entry.name || `Line ${index + 1}`),
         appliesTo,
-        percent: Number(entry.percent) || 0,
-        fixed: Number(entry.fixed) || 0,
+        percent: Number.isFinite(percentValue) ? percentValue : 0,
+        fixed: Number.isFinite(fixedValue) ? fixedValue : 0,
+        substractOtherDepostit: Boolean(entry.substractOtherDepostit),
       };
     })
     .filter(Boolean);
