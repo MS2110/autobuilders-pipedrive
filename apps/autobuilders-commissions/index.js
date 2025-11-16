@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("path");
 const passport = require("passport");
+const axios = require("axios");
 const { Strategy } = require("passport-oauth2");
 
 const api = require("./api");
@@ -105,6 +106,87 @@ function requireAuthorization(req, res) {
     loginUrl: "/auth/pipedrive",
   });
   return null;
+}
+
+function isUnauthorizedError(error) {
+  if (!error) {
+    return false;
+  }
+
+  if (error.response && error.response.status === 401) {
+    return true;
+  }
+
+  return error.status === 401;
+}
+
+async function refreshInstallationUser(user) {
+  if (!HAS_OAUTH_CONFIG) {
+    throw new Error("OAuth credentials are not configured");
+  }
+
+  if (!user || !user.refresh_token) {
+    throw new Error("No refresh token available");
+  }
+
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: user.refresh_token,
+    client_id: config.clientID,
+    client_secret: config.clientSecret,
+  });
+
+  if (config.callbackURL) {
+    params.set("redirect_uri", config.callbackURL);
+  }
+
+  const response = await axios({
+    method: "POST",
+    url: "https://oauth.pipedrive.com/oauth/token",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    data: params.toString(),
+    timeout: 10000,
+  });
+
+  const { access_token, refresh_token } = response.data || {};
+
+  if (!access_token) {
+    throw new Error("Refresh response missing access token");
+  }
+
+  const storedUser = await User.upsert(
+    user.username || "Pipedrive user",
+    access_token,
+    refresh_token || user.refresh_token
+  );
+
+  return storedUser;
+}
+
+async function withFreshAccessToken(req, res, handler) {
+  const currentUser = requireAuthorization(req, res);
+
+  if (!currentUser) {
+    return null;
+  }
+
+  try {
+    return await handler(currentUser);
+  } catch (error) {
+    if (
+      isUnauthorizedError(error) &&
+      HAS_OAUTH_CONFIG &&
+      currentUser.refresh_token
+    ) {
+      const refreshedUser = await refreshInstallationUser(currentUser);
+      req.installationUser = refreshedUser;
+      return await handler(refreshedUser);
+    }
+
+    throw error;
+  }
 }
 
 function sanitizeCommissionConfig(rawConfig) {
@@ -244,29 +326,33 @@ app.get("/extension/deal", (req, res) => {
 });
 
 app.get("/api/deals/:dealId/commission", async (req, res, next) => {
-  const user = requireAuthorization(req, res);
-  if (!user) {
-    return;
-  }
-
   try {
-    const deal = await fetchDeal(req.params.dealId, user.access_token);
-    const storedSummary = parseStoredSummary(
-      deal[COMMISSION_FIELD_KEY],
-      deal.value
-    );
-    respondWithDealSummary(res, deal, storedSummary);
+    const result = await withFreshAccessToken(req, res, async (user) => {
+      const deal = await fetchDeal(req.params.dealId, user.access_token);
+      const storedSummary = parseStoredSummary(
+        deal[COMMISSION_FIELD_KEY],
+        deal.value
+      );
+      respondWithDealSummary(res, deal, storedSummary);
+    });
+
+    if (result === null) {
+      return;
+    }
   } catch (error) {
+    if (isUnauthorizedError(error)) {
+      res.status(401).json({
+        error: "Authorization required",
+        loginUrl: "/auth/pipedrive",
+      });
+      return;
+    }
+
     next(error);
   }
 });
 
 app.put("/api/deals/:dealId/commission", async (req, res, next) => {
-  const user = requireAuthorization(req, res);
-  if (!user) {
-    return;
-  }
-
   const incomingConfig = sanitizeCommissionConfig(req.body?.commissionConfig);
   const depositPercent = Math.max(
     0,
@@ -274,23 +360,37 @@ app.put("/api/deals/:dealId/commission", async (req, res, next) => {
   );
 
   try {
-    const deal = await fetchDeal(req.params.dealId, user.access_token);
-    const summary = {
-      commissionConfig: incomingConfig,
-      depositPercent,
-      dealValue: Number(deal.value) || 0,
-    };
+    const result = await withFreshAccessToken(req, res, async (user) => {
+      const deal = await fetchDeal(req.params.dealId, user.access_token);
+      const summary = {
+        commissionConfig: incomingConfig,
+        depositPercent,
+        dealValue: Number(deal.value) || 0,
+      };
 
-    await api.updateDealFields(
-      req.params.dealId,
-      {
-        [COMMISSION_FIELD_KEY]: JSON.stringify(summary),
-      },
-      user.access_token
-    );
+      await api.updateDealFields(
+        req.params.dealId,
+        {
+          [COMMISSION_FIELD_KEY]: JSON.stringify(summary),
+        },
+        user.access_token
+      );
 
-    respondWithDealSummary(res, deal, summary);
+      respondWithDealSummary(res, deal, summary);
+    });
+
+    if (result === null) {
+      return;
+    }
   } catch (error) {
+    if (isUnauthorizedError(error)) {
+      res.status(401).json({
+        error: "Authorization required",
+        loginUrl: "/auth/pipedrive",
+      });
+      return;
+    }
+
     next(error);
   }
 });
