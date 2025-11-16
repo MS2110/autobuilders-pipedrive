@@ -4,27 +4,6 @@
   const COMMISSION_FIELD_NAME = "commission_config_json";
   const root = document.getElementById("root");
   const queryParams = new URLSearchParams(window.location.search);
-  const panelState = {
-    ready: false,
-    dealId: null,
-    dealName: null,
-    source: null,
-    dealValue: 0,
-    depositPercent: 0,
-    commissionConfig: [],
-    originalLines: [],
-    originalSnapshot: "[]",
-    isDirty: false,
-    saving: false,
-    lastError: null,
-    lastSavedAt: null,
-  };
-
-  if (root) {
-    root.addEventListener("input", handleCommissionInput, true);
-    root.addEventListener("change", handleCommissionInput, true);
-    root.addEventListener("click", handleRootClick, true);
-  }
 
   function getDealIdFromQuery() {
     const params = queryParams;
@@ -589,189 +568,33 @@
     })}`;
   }
 
-  function normalizeNumber(value) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function parseCommissionPayload(rawValue) {
-    if (!rawValue) {
-      return { commissionConfig: [], depositPercent: null, dealValue: null };
-    }
-
-    let parsed = rawValue;
-    if (typeof rawValue === "string") {
+  function showResult(result) {
+    // Parse commission config
+    let commissionConfig = [];
+    if (result.commissionConfig) {
       try {
-        parsed = JSON.parse(rawValue);
-      } catch (error) {
-        return { commissionConfig: [], depositPercent: null, dealValue: null };
+        commissionConfig =
+          typeof result.commissionConfig === "string"
+            ? JSON.parse(result.commissionConfig)
+            : result.commissionConfig;
+
+        if (!Array.isArray(commissionConfig)) {
+          commissionConfig = [];
+        }
+      } catch (e) {
+        console.error("Failed to parse commission config:", e);
+        commissionConfig = [];
       }
     }
 
-    if (Array.isArray(parsed)) {
-      return {
-        commissionConfig: parsed,
-        depositPercent: null,
-        dealValue: null,
-      };
-    }
+    const dealValue = Number(result.dealValue) || 0;
+    const depositPercent = Number(result.depositPercent) || 0;
+    const calculations = calculateCommissions(
+      commissionConfig,
+      dealValue,
+      depositPercent
+    );
 
-    if (parsed && typeof parsed === "object") {
-      const commissionConfig = Array.isArray(parsed.commissionConfig)
-        ? parsed.commissionConfig
-        : [];
-
-      return {
-        commissionConfig,
-        depositPercent:
-          parsed.depositPercent !== undefined ? parsed.depositPercent : null,
-        dealValue: parsed.dealValue !== undefined ? parsed.dealValue : null,
-      };
-    }
-
-    return { commissionConfig: [], depositPercent: null, dealValue: null };
-  }
-
-  function sanitizeLines(lines) {
-    if (!Array.isArray(lines)) {
-      return [];
-    }
-
-    return lines
-      .map((entry, index) => {
-        if (!entry) {
-          return null;
-        }
-
-        const appliesToRaw =
-          typeof entry.appliesTo === "string"
-            ? entry.appliesTo.toLowerCase()
-            : "";
-        const appliesTo = appliesToRaw === "deposit" ? "deposit" : "total";
-        const percentValue = Number(entry.percent);
-        const fixedValue = Number(entry.fixed);
-
-        const safeName = (() => {
-          if (entry.name === null || entry.name === undefined) {
-            return `Line ${index + 1}`;
-          }
-          const trimmed = String(entry.name).trim();
-          return trimmed.length ? trimmed : `Line ${index + 1}`;
-        })();
-
-        return {
-          id: String(entry.id || `line-${index + 1}`),
-          name: safeName,
-          appliesTo,
-          percent: Number.isFinite(percentValue) ? percentValue : 0,
-          fixed: Number.isFinite(fixedValue) ? fixedValue : 0,
-          substractOtherDepostit: Boolean(entry.substractOtherDepostit),
-        };
-      })
-      .filter(Boolean);
-  }
-
-  function createEditingLines(lines) {
-    return lines.map((line) => ({
-      id: line.id,
-      name: line.name,
-      appliesTo: line.appliesTo === "deposit" ? "deposit" : "total",
-      percent:
-        line.percent === 0 || Number.isFinite(line.percent)
-          ? String(line.percent)
-          : "",
-      fixed:
-        line.fixed === 0 || Number.isFinite(line.fixed)
-          ? String(line.fixed)
-          : "",
-      substractOtherDepostit: Boolean(line.substractOtherDepostit),
-    }));
-  }
-
-  function snapshotLines(lines) {
-    try {
-      return JSON.stringify(lines);
-    } catch (error) {
-      return "[]";
-    }
-  }
-
-  function parseResultIntoState(result) {
-    const summaryLines = Array.isArray(result?.summary?.commissionConfig)
-      ? result.summary.commissionConfig
-      : null;
-    const rawPayload =
-      result?.commissionConfig !== undefined
-        ? result.commissionConfig
-        : result?.fieldValue ?? null;
-    const parsedPayload = parseCommissionPayload(rawPayload);
-
-    const lines =
-      summaryLines && summaryLines.length
-        ? summaryLines
-        : parsedPayload.commissionConfig || [];
-
-    const depositPercent =
-      normalizeNumber(result?.summary?.depositPercent) ??
-      normalizeNumber(result?.depositPercent) ??
-      normalizeNumber(parsedPayload.depositPercent) ??
-      0;
-
-    const dealValue =
-      normalizeNumber(result?.summary?.dealValue) ??
-      normalizeNumber(result?.dealValue) ??
-      normalizeNumber(parsedPayload.dealValue) ??
-      0;
-
-    return { lines, depositPercent, dealValue };
-  }
-
-  function markSavedState(lines) {
-    panelState.originalLines = lines.map((line) => ({ ...line }));
-    panelState.originalSnapshot = snapshotLines(panelState.originalLines);
-  }
-
-  function hydratePanelState(result) {
-    const parsed = parseResultIntoState(result || {});
-    const sanitizedLines = sanitizeLines(parsed.lines);
-    const editingLines = createEditingLines(sanitizedLines);
-
-    panelState.ready = true;
-    panelState.dealId = result?.dealId || panelState.dealId;
-    panelState.dealName = result?.dealName || panelState.dealName;
-    panelState.source = result?.source || panelState.source || null;
-    panelState.dealValue = parsed.dealValue;
-    panelState.depositPercent = parsed.depositPercent;
-    panelState.commissionConfig = editingLines;
-    markSavedState(sanitizedLines);
-    panelState.isDirty = false;
-    panelState.saving = false;
-    panelState.lastError = null;
-  }
-
-  function getSanitizedLinesFromState() {
-    return sanitizeLines(panelState.commissionConfig);
-  }
-
-  function updateDirtyFlag() {
-    const currentSnapshot = snapshotLines(getSanitizedLinesFromState());
-    panelState.isDirty = currentSnapshot !== panelState.originalSnapshot;
-  }
-
-  function formatTimestamp(timestamp) {
-    if (!timestamp) {
-      return "";
-    }
-    try {
-      const date = new Date(timestamp);
-      return date.toLocaleString();
-    } catch (error) {
-      return String(timestamp);
-    }
-  }
-
-  function buildMetricsHTML(calculations) {
-    const depositPercent = panelState.depositPercent;
     const metrics = [
       {
         label:
@@ -786,7 +609,7 @@
       },
     ];
 
-    return metrics
+    const metricsHTML = metrics
       .map(
         (metric) => `
               <div class="metric-card">
@@ -803,10 +626,8 @@
             `
       )
       .join("");
-  }
 
-  function buildCommissionRows(calculations) {
-    return calculations.commissions
+    const commissionRows = calculations.commissions
       .map(
         (commission) => `
               <div class="commission-row">
@@ -855,176 +676,7 @@
     `
       )
       .join("");
-  }
 
-  function renderEditorRow(line, index) {
-    const isDeposit = line.appliesTo === "deposit";
-    const percentValue = line.percent ?? "";
-    const fixedValue = line.fixed ?? "";
-
-    return `
-      <div class="commission-form-row">
-        <div class="form-field grow">
-          <label for="commission-name-${index}">Name</label>
-          <input
-            id="commission-name-${index}"
-            type="text"
-            class="input"
-            data-commission-input
-            data-field="name"
-            data-index="${index}"
-            value="${escapeHtml(line.name ?? "")}" />
-        </div>
-        <div class="form-field">
-          <label for="commission-applies-${index}">Applies to</label>
-          <select
-            id="commission-applies-${index}"
-            class="input"
-            data-commission-input
-            data-field="appliesTo"
-            data-index="${index}">
-            <option value="total" ${
-              line.appliesTo === "total" ? "selected" : ""
-            }>Total</option>
-            <option value="deposit" ${
-              isDeposit ? "selected" : ""
-            }>Deposit</option>
-          </select>
-        </div>
-        <div class="form-field compact">
-          <label for="commission-percent-${index}">% rate</label>
-          <input
-            id="commission-percent-${index}"
-            type="number"
-            step="0.01"
-            class="input"
-            data-commission-input
-            data-field="percent"
-            data-index="${index}"
-            value="${escapeHtml(percentValue)}" />
-        </div>
-        <div class="form-field compact">
-          <label for="commission-fixed-${index}">Fixed (€)</label>
-          <input
-            id="commission-fixed-${index}"
-            type="number"
-            step="0.01"
-            class="input"
-            data-commission-input
-            data-field="fixed"
-            data-index="${index}"
-            value="${escapeHtml(fixedValue)}" />
-        </div>
-        <div class="form-field checkbox-field">
-          <label>
-            <input
-              type="checkbox"
-              data-commission-input
-              data-field="substractOtherDepostit"
-              data-index="${index}"
-              ${line.substractOtherDepostit ? "checked" : ""}
-              ${isDeposit ? "" : "disabled"} />
-            <span>Subtract other deposit fees</span>
-          </label>
-        </div>
-        <button
-          type="button"
-          class="icon-button danger"
-          data-action="delete-line"
-          data-index="${index}"
-          aria-label="Delete commission line">
-          ×
-        </button>
-      </div>
-    `;
-  }
-
-  function renderEditorSection() {
-    const lines = panelState.commissionConfig;
-    const listContent = lines.length
-      ? lines.map(renderEditorRow).join("")
-      : '<div class="commission-editor-empty">No commission lines yet. Add one to start distributing the deal value.</div>';
-
-    const statusMessage = panelState.lastError
-      ? `<p class="form-error">${escapeHtml(panelState.lastError)}</p>`
-      : panelState.lastSavedAt
-      ? `<p class="form-note">Last saved ${escapeHtml(
-          formatTimestamp(panelState.lastSavedAt)
-        )}</p>`
-      : "";
-
-    return `
-      <section class="section-card editor-card">
-        <div class="section-heading">
-          <span class="section-title">Edit commission configuration</span>
-          <span class="section-subtitle">Updates ${escapeHtml(
-            COMMISSION_FIELD_NAME
-          )} on this deal</span>
-        </div>
-        <div class="commission-editor-meta">
-          <div class="meta-row">
-            <span class="meta-label">Deal</span>
-            <span class="meta-value">${escapeHtml(
-              panelState.dealName || panelState.dealId || "Current deal"
-            )}</span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">Lines</span>
-            <span class="meta-value">${lines.length}</span>
-          </div>
-        </div>
-        <div class="commission-form-list">
-          ${listContent}
-        </div>
-        <button type="button" class="button ghost" data-action="add-line">
-          Add commission line
-        </button>
-        <div class="form-actions">
-          <button
-            type="button"
-            class="button secondary"
-            data-action="reset-lines"
-            ${panelState.isDirty && !panelState.saving ? "" : "disabled"}>
-            Discard changes
-          </button>
-          <button
-            type="button"
-            class="button primary"
-            data-action="save-lines"
-            ${panelState.isDirty && !panelState.saving ? "" : "disabled"}>
-            ${panelState.saving ? "Saving…" : "Save changes"}
-          </button>
-        </div>
-        ${statusMessage}
-      </section>
-    `;
-  }
-
-  function renderPanel() {
-    if (!root) {
-      return;
-    }
-
-    if (!panelState.ready) {
-      root.innerHTML = `
-        <div class="panel-stack">
-          <section class="section-card">
-            <div class="empty-state">Loading commission data…</div>
-          </section>
-        </div>
-      `;
-      return;
-    }
-
-    const sanitizedLines = getSanitizedLinesFromState();
-    const calculations = calculateCommissions(
-      sanitizedLines,
-      panelState.dealValue,
-      panelState.depositPercent
-    );
-
-    const metricsHTML = buildMetricsHTML(calculations);
-    const commissionRows = buildCommissionRows(calculations);
     const commissionsHTML = commissionRows
       ? `<div class="commission-list">${commissionRows}</div>`
       : '<div class="empty-state">No commission configuration found</div>';
@@ -1055,219 +707,8 @@
               <span class="validation-label">Total commissions</span>
               <span class="validation-value">${totalCommissionsText} · ${validationSummary}</span>
             </div>
-
-            ${renderEditorSection()}
           </div>
         `;
-  }
-
-  function generateLineId() {
-    if (window.crypto && typeof window.crypto.randomUUID === "function") {
-      return window.crypto.randomUUID();
-    }
-    return `line-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
-
-  function handleCommissionInput(event) {
-    const target = event.target.closest("[data-commission-input]");
-    if (!target || target.disabled) {
-      return;
-    }
-
-    const index = Number(target.dataset.index);
-    const field = target.dataset.field;
-
-    if (!Number.isInteger(index) || !field) {
-      return;
-    }
-
-    const value = target.type === "checkbox" ? target.checked : target.value;
-    updateLineField(index, field, value);
-  }
-
-  function handleRootClick(event) {
-    const actionTarget = event.target.closest("[data-action]");
-    if (!actionTarget || actionTarget.disabled) {
-      return;
-    }
-
-    const action = actionTarget.dataset.action;
-    if (action === "add-line") {
-      event.preventDefault();
-      addNewLine();
-      return;
-    }
-
-    if (action === "delete-line") {
-      event.preventDefault();
-      const index = Number(actionTarget.dataset.index);
-      deleteLine(index);
-      return;
-    }
-
-    if (action === "reset-lines") {
-      event.preventDefault();
-      resetLines();
-      return;
-    }
-
-    if (action === "save-lines") {
-      event.preventDefault();
-      savePanelChanges();
-      return;
-    }
-  }
-
-  function updateLineField(index, field, rawValue) {
-    if (
-      !panelState.ready ||
-      index < 0 ||
-      index >= panelState.commissionConfig.length
-    ) {
-      return;
-    }
-
-    const nextLines = panelState.commissionConfig.slice();
-    const currentLine = { ...nextLines[index] };
-
-    if (field === "substractOtherDepostit") {
-      currentLine.substractOtherDepostit = Boolean(rawValue);
-    } else if (field === "appliesTo") {
-      currentLine.appliesTo = rawValue === "deposit" ? "deposit" : "total";
-      if (currentLine.appliesTo !== "deposit") {
-        currentLine.substractOtherDepostit = false;
-      }
-    } else if (field === "percent" || field === "fixed") {
-      currentLine[field] = String(rawValue ?? "").replace(/,/g, ".");
-    } else {
-      currentLine[field] = rawValue;
-    }
-
-    nextLines[index] = currentLine;
-    panelState.commissionConfig = nextLines;
-    updateDirtyFlag();
-    renderPanel();
-  }
-
-  function addNewLine() {
-    const newLine = {
-      id: generateLineId(),
-      name: "New commission",
-      appliesTo: "total",
-      percent: "0",
-      fixed: "0",
-      substractOtherDepostit: false,
-    };
-
-    panelState.commissionConfig = [...panelState.commissionConfig, newLine];
-    updateDirtyFlag();
-    renderPanel();
-  }
-
-  function deleteLine(index) {
-    if (
-      index < 0 ||
-      index >= panelState.commissionConfig.length ||
-      panelState.commissionConfig.length === 0
-    ) {
-      return;
-    }
-
-    const target = panelState.commissionConfig[index];
-    const label = target?.name?.trim() || `Line ${index + 1}`;
-    if (!window.confirm(`Delete "${label}"?`)) {
-      return;
-    }
-
-    const nextLines = panelState.commissionConfig.slice();
-    nextLines.splice(index, 1);
-    panelState.commissionConfig = nextLines;
-    updateDirtyFlag();
-    renderPanel();
-  }
-
-  function resetLines() {
-    const restored = createEditingLines(panelState.originalLines || []);
-    panelState.commissionConfig = restored;
-    panelState.lastError = null;
-    panelState.isDirty = false;
-    renderPanel();
-  }
-
-  async function savePanelChanges() {
-    if (
-      !panelState.ready ||
-      !panelState.dealId ||
-      panelState.saving ||
-      !panelState.isDirty
-    ) {
-      return;
-    }
-
-    const sanitizedLines = getSanitizedLinesFromState();
-    panelState.saving = true;
-    panelState.lastError = null;
-    renderPanel();
-
-    try {
-      const response = await fetch(
-        `/api/deals/${encodeURIComponent(panelState.dealId)}/commission`,
-        {
-          method: "PUT",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            commissionConfig: sanitizedLines,
-            depositPercent: panelState.depositPercent,
-          }),
-        }
-      );
-
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          panelState.saving = false;
-          renderPanel();
-          showAuthRequired(payload.loginUrl || payload.authorizeUrl);
-          return;
-        }
-        throw new Error(
-          payload.error ||
-            `Failed to update commission configuration (HTTP ${response.status})`
-        );
-      }
-
-      hydratePanelState({
-        dealId: panelState.dealId,
-        dealName: panelState.dealName,
-        source: panelState.source,
-        summary: payload?.summary,
-        commissionConfig:
-          payload?.summary?.commissionConfig ||
-          payload?.deal?.[COMMISSION_FIELD_KEY] ||
-          sanitizedLines,
-        depositPercent:
-          payload?.summary?.depositPercent ?? panelState.depositPercent,
-        dealValue: payload?.summary?.dealValue ?? panelState.dealValue,
-      });
-
-      panelState.lastSavedAt = new Date().toISOString();
-      panelState.saving = false;
-      renderPanel();
-    } catch (error) {
-      console.error("Failed to save commission configuration", error);
-      panelState.saving = false;
-      panelState.lastError = error.message || "Unable to save changes";
-      renderPanel();
-    }
-  }
-
-  function showResult(result) {
-    hydratePanelState(result);
-    renderPanel();
   }
 
   function showError(message) {
@@ -1352,7 +793,6 @@
         dealId,
         source: detectionSource,
         dealName,
-        summary: payload?.summary || null,
         commissionConfig,
         depositPercent,
         dealValue,
