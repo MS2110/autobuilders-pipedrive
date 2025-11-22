@@ -540,6 +540,7 @@
         fixed: fixedAmount,
         appliesTo: config.appliesTo || "total",
         substractOtherDepostit: config.substractOtherDepostit || false,
+        comment: config.comment || null,
         depositAmount: onDeposit,
         remainingAmount: onRemaining,
         total: total,
@@ -658,6 +659,13 @@
                     commission.total
                   )}</div>
                 </div>
+                ${
+                  commission.comment
+                    ? `<div class="commission-comment">${escapeHtml(
+                        commission.comment
+                      )}</div>`
+                    : ""
+                }
                 <div class="commission-breakdown">
                   <div class="breakdown-item">
                     <span class="breakdown-label">Rate</span>
@@ -724,6 +732,13 @@
                 commission.total
               )}</div>
             </div>
+            ${
+              commission.comment
+                ? `<div class="commission-comment">${escapeHtml(
+                    commission.comment
+                  )}</div>`
+                : ""
+            }
             <div class="commission-breakdown">
               <div class="breakdown-item">
                 <span class="breakdown-label">Rate</span>
