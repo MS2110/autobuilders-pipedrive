@@ -627,9 +627,26 @@
       )
       .join("");
 
-    const commissionRows = calculations.commissions
-      .map(
-        (commission) => `
+    // Group commissions by name
+    const groupedCommissions = {};
+    calculations.commissions.forEach((commission, index) => {
+      if (!groupedCommissions[commission.name]) {
+        groupedCommissions[commission.name] = [];
+      }
+      groupedCommissions[commission.name].push({
+        ...commission,
+        originalIndex: index,
+      });
+    });
+
+    const commissionRows = Object.entries(groupedCommissions)
+      .map(([name, items]) => {
+        const isGroup = items.length > 1;
+
+        if (!isGroup) {
+          // Single item - render as before
+          const commission = items[0];
+          return `
               <div class="commission-row">
                 <div class="commission-row-main">
                   <div>
@@ -673,8 +690,119 @@
                   </div>
                 </div>
               </div>
-    `
-      )
+          `;
+        }
+
+        // Multiple items - render as collapsible group
+        const groupTotal = items.reduce((sum, item) => sum + item.total, 0);
+        const groupDepositTotal = items.reduce(
+          (sum, item) => sum + item.depositAmount,
+          0
+        );
+        const groupRemainingTotal = items.reduce(
+          (sum, item) => sum + item.remainingAmount,
+          0
+        );
+        const groupFixedTotal = items.reduce(
+          (sum, item) => sum + item.fixed,
+          0
+        );
+
+        const groupId = `group-${name.replace(/[^a-zA-Z0-9]/g, "-")}-${
+          items[0].originalIndex
+        }`;
+
+        const itemsHTML = items
+          .map(
+            (commission, idx) => `
+          <div class="commission-row commission-group-item">
+            <div class="commission-row-main">
+              <div>
+                <p class="commission-name">Item ${idx + 1}</p>
+              </div>
+              <div class="commission-amount">${formatCurrency(
+                commission.total
+              )}</div>
+            </div>
+            <div class="commission-breakdown">
+              <div class="breakdown-item">
+                <span class="breakdown-label">Rate</span>
+                <span class="breakdown-value">${
+                  commission.percent !== undefined &&
+                  commission.percent !== null
+                    ? `${commission.percent}%`
+                    : "—"
+                }</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="breakdown-label">On deposit</span>
+                <span class="breakdown-value">${formatCurrency(
+                  commission.depositAmount
+                )}</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="breakdown-label">On remaining</span>
+                <span class="breakdown-value">${formatCurrency(
+                  commission.remainingAmount
+                )}</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="breakdown-label">Fixed</span>
+                <span class="breakdown-value">${
+                  commission.fixed > 0 ? formatCurrency(commission.fixed) : "—"
+                }</span>
+              </div>
+            </div>
+          </div>
+        `
+          )
+          .join("");
+
+        return `
+          <div class="commission-group">
+            <div class="commission-row commission-group-header" onclick="toggleGroup('${groupId}')">
+              <div class="commission-row-main">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg class="group-toggle-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6 4L10 8L6 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <p class="commission-name">${escapeHtml(
+                    name
+                  )} <span class="group-count">(${
+          items.length
+        } items)</span></p>
+                </div>
+                <div class="commission-amount">${formatCurrency(
+                  groupTotal
+                )}</div>
+              </div>
+              <div class="commission-breakdown">
+                <div class="breakdown-item">
+                  <span class="breakdown-label">On deposit</span>
+                  <span class="breakdown-value">${formatCurrency(
+                    groupDepositTotal
+                  )}</span>
+                </div>
+                <div class="breakdown-item">
+                  <span class="breakdown-label">On remaining</span>
+                  <span class="breakdown-value">${formatCurrency(
+                    groupRemainingTotal
+                  )}</span>
+                </div>
+                <div class="breakdown-item">
+                  <span class="breakdown-label">Fixed</span>
+                  <span class="breakdown-value">${
+                    groupFixedTotal > 0 ? formatCurrency(groupFixedTotal) : "—"
+                  }</span>
+                </div>
+              </div>
+            </div>
+            <div class="commission-group-items" id="${groupId}">
+              ${itemsHTML}
+            </div>
+          </div>
+        `;
+      })
       .join("");
 
     const commissionsHTML = commissionRows
@@ -885,6 +1013,21 @@
 
     showError("No deal ID found in SDK context or query parameters.");
   }
+
+  // Toggle group visibility
+  window.toggleGroup = function (groupId) {
+    const groupItems = document.getElementById(groupId);
+    const groupHeader = groupItems.previousElementSibling;
+    const icon = groupHeader.querySelector(".group-toggle-icon");
+
+    if (groupItems.classList.contains("expanded")) {
+      groupItems.classList.remove("expanded");
+      icon.style.transform = "rotate(0deg)";
+    } else {
+      groupItems.classList.add("expanded");
+      icon.style.transform = "rotate(90deg)";
+    }
+  };
 
   initialize();
 })();
