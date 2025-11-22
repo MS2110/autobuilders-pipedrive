@@ -72,10 +72,24 @@ async function getDealById(id, accessToken) {
   return deal.data;
 }
 
+async function getDealProducts(id, accessToken) {
+  const requestOptions = {
+    url: `https://api.pipedrive.com/v1/deals/${id}/products`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    timeout: 10000,
+  };
+  const products = await axios(requestOptions);
+
+  return products.data;
+}
+
 module.exports = {
   getUser,
   getDeals,
   updateDeal,
   getDealById,
   updateDealFields,
+  getDealProducts,
 };

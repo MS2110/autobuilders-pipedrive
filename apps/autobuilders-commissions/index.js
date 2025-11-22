@@ -360,6 +360,32 @@ app.get("/api/deals/:dealId/commission", async (req, res, next) => {
   }
 });
 
+app.get("/api/deals/:dealId/products", async (req, res, next) => {
+  try {
+    const result = await withFreshAccessToken(req, res, async (user) => {
+      const productsResult = await api.getDealProducts(
+        req.params.dealId,
+        user.access_token
+      );
+      res.json({ products: productsResult?.data || [] });
+    });
+
+    if (result === null) {
+      return;
+    }
+  } catch (error) {
+    if (isUnauthorizedError(error)) {
+      res.status(401).json({
+        error: "Authorization required",
+        loginUrl: "/auth/pipedrive",
+      });
+      return;
+    }
+
+    next(error);
+  }
+});
+
 app.put("/api/deals/:dealId/commission", async (req, res, next) => {
   const incomingConfig = sanitizeCommissionConfig(req.body?.commissionConfig);
   const depositPercent = Math.max(

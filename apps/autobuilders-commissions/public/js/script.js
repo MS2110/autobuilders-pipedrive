@@ -568,7 +568,7 @@
     })}`;
   }
 
-  function showResult(result) {
+  function showResult(result, products = []) {
     // Parse commission config
     let commissionConfig = [];
     if (result.commissionConfig) {
@@ -815,6 +815,44 @@
       : "Needs review";
     const totalCommissionsText = formatCurrency(calculations.totalCommissions);
 
+    // Build products section
+    let productsHTML = "";
+    if (products && products.length > 0) {
+      const productRows = products
+        .map((product) => {
+          const name = escapeHtml(product.name || "Unnamed product");
+          const quantity = Number(product.quantity) || 0;
+          const sum = Number(product.sum) || 0;
+          return `
+            <div class="product-row">
+              <span class="product-name">${name}</span>
+              <span class="product-qty">${quantity}</span>
+              <span class="product-total">${formatCurrency(sum)}</span>
+            </div>
+          `;
+        })
+        .join("");
+
+      productsHTML = `
+        <section class="section-card">
+          <div class="section-heading">
+            <span class="section-title">Products</span>
+            <span class="section-subtitle">${products.length} item${
+        products.length !== 1 ? "s" : ""
+      }</span>
+          </div>
+          <div class="products-list">
+            <div class="product-row product-header">
+              <span class="product-name">Name</span>
+              <span class="product-qty">Qty</span>
+              <span class="product-total">Total</span>
+            </div>
+            ${productRows}
+          </div>
+        </section>
+      `;
+    }
+
     root.innerHTML = `
           <div class="panel-stack">
             <section class="section-card">
@@ -835,6 +873,8 @@
               <span class="validation-label">Total commissions</span>
               <span class="validation-value">${totalCommissionsText} · ${validationSummary}</span>
             </div>
+
+            ${productsHTML}
           </div>
         `;
   }
@@ -900,6 +940,25 @@
     return payload;
   }
 
+  async function fetchDealProducts(dealId) {
+    const response = await fetch(
+      `/api/deals/${encodeURIComponent(dealId)}/products`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn("Failed to fetch products:", response.status);
+      return [];
+    }
+
+    const payload = await response.json().catch(() => ({ products: [] }));
+    return payload.products || [];
+  }
+
   async function renderDealFromApi(
     dealId,
     detectionSource,
@@ -908,7 +967,10 @@
     fallbackDealName
   ) {
     try {
-      const payload = await fetchCommissionSummary(dealId);
+      const [payload, products] = await Promise.all([
+        fetchCommissionSummary(dealId),
+        fetchDealProducts(dealId),
+      ]);
       const dealName =
         payload?.deal?.title || payload?.deal?.name || fallbackDealName || null;
 
@@ -917,14 +979,17 @@
       const depositPercent = payload?.deal?.[DEPOSIT_PERCENT_FIELD_KEY] || null;
       const dealValue = payload?.deal?.value || null;
 
-      showResult({
-        dealId,
-        source: detectionSource,
-        dealName,
-        commissionConfig,
-        depositPercent,
-        dealValue,
-      });
+      showResult(
+        {
+          dealId,
+          source: detectionSource,
+          dealName,
+          commissionConfig,
+          depositPercent,
+          dealValue,
+        },
+        products
+      );
     } catch (error) {
       console.error("Failed to fetch commission summary", error);
 
@@ -934,13 +999,16 @@
       }
 
       if (fallbackField !== null && fallbackField !== undefined) {
-        showResult({
-          dealId,
-          source: detectionSource,
-          fieldValue: fallbackField,
-          fieldSource: fallbackFieldSource,
-          dealName: fallbackDealName,
-        });
+        showResult(
+          {
+            dealId,
+            source: detectionSource,
+            fieldValue: fallbackField,
+            fieldSource: fallbackFieldSource,
+            dealName: fallbackDealName,
+          },
+          []
+        );
         return;
       }
 
