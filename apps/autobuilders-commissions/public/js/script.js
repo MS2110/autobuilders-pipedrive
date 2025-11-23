@@ -7,6 +7,10 @@
   const root = document.getElementById("root");
   const queryParams = new URLSearchParams(window.location.search);
 
+  // Global state for sub-deals merging
+  let currentSubDeals = [];
+  let showMergedView = false;
+
   function getDealIdFromQuery() {
     const params = queryParams;
 
@@ -461,6 +465,57 @@
     }
   }
 
+  function mergeCommissionsWithSubDeals(mainCommissions, subDeals) {
+    // Group all commissions by name
+    const merged = {};
+
+    // Add main deal commissions
+    mainCommissions.forEach((commission) => {
+      if (!merged[commission.name]) {
+        merged[commission.name] = {
+          name: commission.name,
+          items: [],
+        };
+      }
+      merged[commission.name].items.push({
+        ...commission,
+        source: "main",
+        dealTitle: null,
+      });
+    });
+
+    // Add sub-deal commissions
+    subDeals.forEach((subDeal) => {
+      if (!subDeal.commissionConfig || subDeal.commissionConfig.length === 0) {
+        return;
+      }
+
+      // Calculate commissions for this sub-deal
+      const subCalculations = calculateCommissions(
+        subDeal.commissionConfig,
+        subDeal.value,
+        subDeal.depositPercent
+      );
+
+      subCalculations.commissions.forEach((commission) => {
+        if (!merged[commission.name]) {
+          merged[commission.name] = {
+            name: commission.name,
+            items: [],
+          };
+        }
+        merged[commission.name].items.push({
+          ...commission,
+          source: "subdeal",
+          dealTitle: subDeal.title,
+          dealId: subDeal.id,
+        });
+      });
+    });
+
+    return merged;
+  }
+
   function calculateCommissions(commissionConfig, dealValue, depositPercent) {
     const originalDepositAmount = (dealValue * depositPercent) / 100;
     const originalRemainingAmount = dealValue - originalDepositAmount;
@@ -572,6 +627,9 @@
   }
 
   function showResult(result, products = [], parentDeal = null, subDeals = []) {
+    // Store sub-deals globally for toggle functionality
+    currentSubDeals = subDeals;
+
     // Parse commission config
     let commissionConfig = [];
     if (result.commissionConfig) {
@@ -596,6 +654,12 @@
       commissionConfig,
       dealValue,
       depositPercent
+    );
+
+    // Determine if we should show the toggle (only if sub-deals have commission configs)
+    const hasSubDealCommissions = subDeals.some(
+      (subDeal) =>
+        subDeal.commissionConfig && subDeal.commissionConfig.length > 0
     );
 
     // Calculate sub-deals totals
@@ -665,31 +729,54 @@
       .join("");
 
     // Group commissions by name
-    const groupedCommissions = {};
-    calculations.commissions.forEach((commission, index) => {
-      if (!groupedCommissions[commission.name]) {
-        groupedCommissions[commission.name] = [];
-      }
-      groupedCommissions[commission.name].push({
-        ...commission,
-        originalIndex: index,
+    let groupedCommissions = {};
+
+    if (showMergedView && hasSubDealCommissions) {
+      // Merged view: combine main deal and sub-deals
+      const merged = mergeCommissionsWithSubDeals(
+        calculations.commissions,
+        subDeals
+      );
+      groupedCommissions = merged;
+    } else {
+      // Current view: only show main deal
+      calculations.commissions.forEach((commission, index) => {
+        if (!groupedCommissions[commission.name]) {
+          groupedCommissions[commission.name] = {
+            name: commission.name,
+            items: [],
+          };
+        }
+        groupedCommissions[commission.name].items.push({
+          ...commission,
+          originalIndex: index,
+          source: "main",
+          dealTitle: null,
+        });
       });
-    });
+    }
 
     const commissionRows = Object.entries(groupedCommissions)
-      .map(([name, items]) => {
+      .map(([name, group]) => {
+        const items = group.items;
         const isGroup = items.length > 1;
 
         if (!isGroup) {
           // Single item - render as before
           const commission = items[0];
+          const isSubDeal = commission.source === "subdeal";
+          const subDealBadge = isSubDeal
+            ? `<span class="subdeal-badge" title="From sub-deal: ${escapeHtml(
+                commission.dealTitle
+              )}">${escapeHtml(commission.dealTitle)}</span>`
+            : "";
           return `
               <div class="commission-row">
                 <div class="commission-row-main">
                   <div>
                     <p class="commission-name">${escapeHtml(
                       commission.name
-                    )}</p>
+                    )}${subDealBadge}</p>
                   </div>
                   <div class="commission-amount">${formatCurrency(
                     commission.total
@@ -757,12 +844,18 @@
         }`;
 
         const itemsHTML = items
-          .map(
-            (commission, idx) => `
+          .map((commission, idx) => {
+            const isSubDeal = commission.source === "subdeal";
+            const itemLabel = isSubDeal
+              ? `<span class="subdeal-badge-inline">${escapeHtml(
+                  commission.dealTitle
+                )}</span>`
+              : `Item ${idx + 1}`;
+            return `
           <div class="commission-row commission-group-item">
             <div class="commission-row-main">
               <div>
-                <p class="commission-name">Item ${idx + 1}</p>
+                <p class="commission-name">${itemLabel}</p>
               </div>
               <div class="commission-amount">${formatCurrency(
                 commission.total
@@ -805,8 +898,8 @@
               </div>
             </div>
           </div>
-        `
-          )
+        `;
+          })
           .join("");
 
         return `
@@ -975,8 +1068,23 @@
 
             <section class="section-card">
               <div class="section-heading">
-                <span class="section-title">Commission distribution</span>
-                <span class="section-subtitle">Auto-calculated from commission configuration</span>
+                <div style="flex: 1;">
+                  <span class="section-title">Commission distribution</span>
+                  <span class="section-subtitle">Auto-calculated from commission configuration</span>
+                </div>
+                ${
+                  hasSubDealCommissions
+                    ? `
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="mergeToggle" ${
+                      showMergedView ? "checked" : ""
+                    } onchange="toggleMergeView()">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">Include sub-deals</span>
+                  </label>
+                `
+                    : ""
+                }
               </div>
               ${commissionsHTML}
             </section>
@@ -1118,11 +1226,33 @@
       const deal = await fetchDealById(dealId);
       if (!deal) return null;
 
+      // Parse commission config for sub-deal
+      let commissionConfig = [];
+      const rawCommissionConfig = deal[COMMISSION_FIELD_KEY];
+      if (rawCommissionConfig) {
+        try {
+          commissionConfig =
+            typeof rawCommissionConfig === "string"
+              ? JSON.parse(rawCommissionConfig)
+              : rawCommissionConfig;
+          if (!Array.isArray(commissionConfig)) {
+            commissionConfig = [];
+          }
+        } catch (e) {
+          console.error(
+            `Failed to parse commission config for sub-deal ${dealId}:`,
+            e
+          );
+          commissionConfig = [];
+        }
+      }
+
       return {
         id: dealId,
         title: deal.title || deal.name || `Deal ${dealId}`,
         value: Number(deal.value) || 0,
         depositPercent: Number(deal[DEPOSIT_PERCENT_FIELD_KEY]) || 0,
+        commissionConfig: commissionConfig,
       };
     });
 
@@ -1292,6 +1422,23 @@
     } else {
       groupItems.classList.add("expanded");
       icon.style.transform = "rotate(90deg)";
+    }
+  };
+
+  // Toggle merged view
+  window.toggleMergeView = function () {
+    const checkbox = document.getElementById("mergeToggle");
+    showMergedView = checkbox ? checkbox.checked : false;
+
+    // Re-render with current data
+    // We need to store the last result to re-render
+    if (window.lastRenderData) {
+      showResult(
+        window.lastRenderData.result,
+        window.lastRenderData.products,
+        window.lastRenderData.parentDeal,
+        window.lastRenderData.subDeals
+      );
     }
   };
 
