@@ -390,9 +390,16 @@ p {
   color: #2e7d32;
 }
 
-.metric-subtotal-label {
-  color: var(--text-muted);
-  font-size: 11px;
+.metric-total-line {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0 6px 0;
+}
+
+.metric-combined-total {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 /* Sub-deals list */

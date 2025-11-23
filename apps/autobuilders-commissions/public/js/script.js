@@ -638,9 +638,15 @@
                   metric.subTotal
                     ? `<div class="metric-subtotal">
                         <span class="metric-subtotal-icon">+</span>
-                        <span class="metric-subtotal-value">${metric.subTotal}</span>
-                        <span class="metric-subtotal-label">from sub-deals</span>
-                      </div>`
+                        <span class="metric-subtotal-value">${
+                          metric.subTotal
+                        }</span>
+                      </div>
+                      <div class="metric-total-line"></div>
+                      <div class="metric-combined-total">${formatCurrency(
+                        parseFloat(metric.value.replace(/[^0-9.-]/g, "")) +
+                          parseFloat(metric.subTotal.replace(/[^0-9.-]/g, ""))
+                      )}</div>`
                     : ""
                 }
                 ${
