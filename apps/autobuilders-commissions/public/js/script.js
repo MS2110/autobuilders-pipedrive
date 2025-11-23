@@ -8,8 +8,8 @@
   const queryParams = new URLSearchParams(window.location.search);
 
   // Global state for sub-deals merging
-  let currentSubDeals = [];
   let showMergedView = false;
+  window.lastRenderData = null;
 
   function getDealIdFromQuery() {
     const params = queryParams;
@@ -627,9 +627,6 @@
   }
 
   function showResult(result, products = [], parentDeal = null, subDeals = []) {
-    // Store sub-deals globally for toggle functionality
-    currentSubDeals = subDeals;
-
     // Parse commission config
     let commissionConfig = [];
     if (result.commissionConfig) {
@@ -657,10 +654,28 @@
     );
 
     // Determine if we should show the toggle (only if sub-deals have commission configs)
-    const hasSubDealCommissions = subDeals.some(
-      (subDeal) =>
-        subDeal.commissionConfig && subDeal.commissionConfig.length > 0
-    );
+    const hasSubDealCommissions = Array.isArray(subDeals)
+      ? subDeals.some(
+          (subDeal) =>
+            Array.isArray(subDeal?.commissionConfig) &&
+            subDeal.commissionConfig.length > 0
+        )
+      : false;
+
+    // Persist latest render payload so toggling can re-use it without refetching
+    window.lastRenderData = {
+      result: {
+        ...result,
+        commissionConfig,
+        dealValue,
+        depositPercent,
+      },
+      products,
+      parentDeal,
+      subDeals,
+    };
+
+    const shouldMergeWithSubDeals = showMergedView && hasSubDealCommissions;
 
     // Calculate sub-deals totals
     const subDealsDepositTotal = subDeals.reduce((sum, sub) => {
@@ -731,7 +746,7 @@
     // Group commissions by name
     let groupedCommissions = {};
 
-    if (showMergedView && hasSubDealCommissions) {
+    if (shouldMergeWithSubDeals) {
       // Merged view: combine main deal and sub-deals
       const merged = mergeCommissionsWithSubDeals(
         calculations.commissions,
@@ -1077,7 +1092,7 @@
                     ? `
                   <label class="toggle-switch">
                     <input type="checkbox" id="mergeToggle" ${
-                      showMergedView ? "checked" : ""
+                      shouldMergeWithSubDeals ? "checked" : ""
                     } onchange="toggleMergeView()">
                     <span class="toggle-slider"></span>
                     <span class="toggle-label">Include sub-deals</span>
