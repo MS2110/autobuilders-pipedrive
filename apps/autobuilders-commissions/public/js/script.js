@@ -617,14 +617,18 @@
             ? `Deposit (${depositPercent}%)`
             : "Deposit",
         value: formatCurrency(calculations.depositAmount),
+        numericValue: calculations.depositAmount,
         subTotal:
           subDeals.length > 0 ? formatCurrency(subDealsDepositTotal) : null,
+        numericSubTotal: subDeals.length > 0 ? subDealsDepositTotal : null,
       },
       {
         label: "Remaining",
         value: formatCurrency(calculations.remainingAmount),
+        numericValue: calculations.remainingAmount,
         subTotal:
           subDeals.length > 0 ? formatCurrency(subDealsRemainingTotal) : null,
+        numericSubTotal: subDeals.length > 0 ? subDealsRemainingTotal : null,
       },
     ];
 
@@ -644,8 +648,7 @@
                       </div>
                       <div class="metric-total-line"></div>
                       <div class="metric-combined-total">${formatCurrency(
-                        parseFloat(metric.value.replace(/[^0-9.-]/g, "")) +
-                          parseFloat(metric.subTotal.replace(/[^0-9.-]/g, ""))
+                        metric.numericValue + metric.numericSubTotal
                       )}</div>`
                     : ""
                 }
