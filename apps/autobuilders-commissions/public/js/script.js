@@ -2,6 +2,8 @@
   const COMMISSION_FIELD_KEY = "1a514f40d36407ecd675c76cc539481989400ac6";
   const DEPOSIT_PERCENT_FIELD_KEY = "315e79ee4cf37b98a64b73194f3f32da234278ba";
   const COMMISSION_FIELD_NAME = "commission_config_json";
+  const PARENT_DEAL_ID_FIELD_KEY = "a3a89eb1a44f7f2b3e78d24ae38d911107feb496";
+  const SUB_DEAL_IDS_FIELD_KEY = "c7939bd1f622eaa7a3a5a53c9600def4820734f4";
   const root = document.getElementById("root");
   const queryParams = new URLSearchParams(window.location.search);
 
@@ -569,7 +571,7 @@
     })}`;
   }
 
-  function showResult(result, products = []) {
+  function showResult(result, products = [], parentDeal = null, subDeals = []) {
     // Parse commission config
     let commissionConfig = [];
     if (result.commissionConfig) {
@@ -596,6 +598,18 @@
       depositPercent
     );
 
+    // Calculate sub-deals totals
+    const subDealsDepositTotal = subDeals.reduce((sum, sub) => {
+      const depositAmount = (sub.value * sub.depositPercent) / 100;
+      return sum + depositAmount;
+    }, 0);
+
+    const subDealsRemainingTotal = subDeals.reduce((sum, sub) => {
+      const depositAmount = (sub.value * sub.depositPercent) / 100;
+      const remainingAmount = sub.value - depositAmount;
+      return sum + remainingAmount;
+    }, 0);
+
     const metrics = [
       {
         label:
@@ -603,10 +617,14 @@
             ? `Deposit (${depositPercent}%)`
             : "Deposit",
         value: formatCurrency(calculations.depositAmount),
+        subTotal:
+          subDeals.length > 0 ? formatCurrency(subDealsDepositTotal) : null,
       },
       {
         label: "Remaining",
         value: formatCurrency(calculations.remainingAmount),
+        subTotal:
+          subDeals.length > 0 ? formatCurrency(subDealsRemainingTotal) : null,
       },
     ];
 
@@ -616,6 +634,15 @@
               <div class="metric-card">
                 <span class="metric-label">${escapeHtml(metric.label)}</span>
                 <span class="metric-value">${metric.value}</span>
+                ${
+                  metric.subTotal
+                    ? `<div class="metric-subtotal">
+                        <span class="metric-subtotal-icon">+</span>
+                        <span class="metric-subtotal-value">${metric.subTotal}</span>
+                        <span class="metric-subtotal-label">from sub-deals</span>
+                      </div>`
+                    : ""
+                }
                 ${
                   metric.note
                     ? `<span class="metric-note">${escapeHtml(
@@ -830,6 +857,66 @@
       : "Needs review";
     const totalCommissionsText = formatCurrency(calculations.totalCommissions);
 
+    // Build parent deal banner
+    let parentDealHTML = "";
+    if (parentDeal) {
+      parentDealHTML = `
+        <div class="parent-deal-banner">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 2L3 7L8 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Sub-deal of <strong>${escapeHtml(
+            parentDeal.title
+          )}</strong></span>
+        </div>
+      `;
+    }
+
+    // Build sub-deals section
+    let subDealsHTML = "";
+    if (subDeals.length > 0) {
+      const subDealRows = subDeals
+        .map((subDeal) => {
+          const depositAmount = (subDeal.value * subDeal.depositPercent) / 100;
+          const remainingAmount = subDeal.value - depositAmount;
+          return `
+            <div class="subdeal-row">
+              <span class="subdeal-name">${escapeHtml(subDeal.title)}</span>
+              <span class="subdeal-value">${formatCurrency(
+                subDeal.value
+              )}</span>
+              <span class="subdeal-deposit">${formatCurrency(
+                depositAmount
+              )}</span>
+              <span class="subdeal-remaining">${formatCurrency(
+                remainingAmount
+              )}</span>
+            </div>
+          `;
+        })
+        .join("");
+
+      subDealsHTML = `
+        <section class="section-card">
+          <div class="section-heading">
+            <span class="section-title">Sub-deals</span>
+            <span class="section-subtitle">${subDeals.length} linked deal${
+        subDeals.length !== 1 ? "s" : ""
+      }</span>
+          </div>
+          <div class="subdeals-list">
+            <div class="subdeal-row subdeal-header">
+              <span class="subdeal-name">Name</span>
+              <span class="subdeal-value">Value</span>
+              <span class="subdeal-deposit">Deposit</span>
+              <span class="subdeal-remaining">Remaining</span>
+            </div>
+            ${subDealRows}
+          </div>
+        </section>
+      `;
+    }
+
     // Build products section
     let productsHTML = "";
     if (products && products.length > 0) {
@@ -870,6 +957,7 @@
 
     root.innerHTML = `
           <div class="panel-stack">
+            ${parentDealHTML}
             <section class="section-card">
               <div class="metrics-grid">
                 ${metricsHTML}
@@ -890,6 +978,8 @@
             </div>
 
             ${productsHTML}
+            
+            ${subDealsHTML}
           </div>
         `;
   }
@@ -974,6 +1064,63 @@
     return payload.products || [];
   }
 
+  async function fetchDealById(dealId) {
+    const response = await fetch(
+      `/api/deals/${encodeURIComponent(dealId)}/commission`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn("Failed to fetch deal:", dealId, response.status);
+      return null;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    return payload.deal || null;
+  }
+
+  function parseSubDealIds(subDealIdsValue) {
+    if (!subDealIdsValue) return [];
+
+    try {
+      const parsed =
+        typeof subDealIdsValue === "string"
+          ? JSON.parse(subDealIdsValue)
+          : subDealIdsValue;
+
+      if (Array.isArray(parsed)) {
+        return parsed.map((id) => String(id).trim()).filter(Boolean);
+      }
+    } catch (e) {
+      console.warn("Failed to parse sub_deal_ids:", e);
+    }
+
+    return [];
+  }
+
+  async function fetchSubDealsData(subDealIds) {
+    if (!subDealIds || subDealIds.length === 0) return [];
+
+    const promises = subDealIds.map(async (dealId) => {
+      const deal = await fetchDealById(dealId);
+      if (!deal) return null;
+
+      return {
+        id: dealId,
+        title: deal.title || deal.name || `Deal ${dealId}`,
+        value: Number(deal.value) || 0,
+        depositPercent: Number(deal[DEPOSIT_PERCENT_FIELD_KEY]) || 0,
+      };
+    });
+
+    const results = await Promise.all(promises);
+    return results.filter(Boolean);
+  }
+
   async function renderDealFromApi(
     dealId,
     detectionSource,
@@ -994,6 +1141,29 @@
       const depositPercent = payload?.deal?.[DEPOSIT_PERCENT_FIELD_KEY] || null;
       const dealValue = payload?.deal?.value || null;
 
+      // Extract parent and sub-deal IDs
+      const parentDealId = payload?.deal?.[PARENT_DEAL_ID_FIELD_KEY] || null;
+      const subDealIdsRaw = payload?.deal?.[SUB_DEAL_IDS_FIELD_KEY] || null;
+      const subDealIds = parseSubDealIds(subDealIdsRaw);
+
+      // Fetch parent deal if this is a sub-deal
+      let parentDeal = null;
+      if (parentDealId) {
+        const parentDealData = await fetchDealById(parentDealId);
+        if (parentDealData) {
+          parentDeal = {
+            id: parentDealId,
+            title:
+              parentDealData.title ||
+              parentDealData.name ||
+              `Deal ${parentDealId}`,
+          };
+        }
+      }
+
+      // Fetch sub-deals if this is a parent deal
+      const subDeals = await fetchSubDealsData(subDealIds);
+
       showResult(
         {
           dealId,
@@ -1003,7 +1173,9 @@
           depositPercent,
           dealValue,
         },
-        products
+        products,
+        parentDeal,
+        subDeals
       );
     } catch (error) {
       console.error("Failed to fetch commission summary", error);
@@ -1022,6 +1194,8 @@
             fieldSource: fallbackFieldSource,
             dealName: fallbackDealName,
           },
+          [],
+          null,
           []
         );
         return;

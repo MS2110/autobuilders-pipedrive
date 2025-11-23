@@ -339,6 +339,134 @@ p {
   letter-spacing: 0.05em;
 }
 
+/* Parent deal banner */
+.parent-deal-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #f0f7ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 4px;
+  color: #0066cc;
+  font-size: 14px;
+}
+
+.parent-deal-banner svg {
+  flex-shrink: 0;
+  color: #0066cc;
+}
+
+.parent-deal-banner strong {
+  font-weight: 600;
+}
+
+/* Sub-deal totals in metrics */
+.metric-subtotal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.metric-subtotal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.metric-subtotal-value {
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+.metric-subtotal-label {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Sub-deals list */
+.subdeals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+}
+
+.subdeal-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 12px 14px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.subdeal-row:last-child {
+  border-bottom: none;
+}
+
+.subdeal-header {
+  background: #fafafa;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.subdeal-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.subdeal-header .subdeal-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.subdeal-value,
+.subdeal-deposit,
+.subdeal-remaining {
+  text-align: right;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.subdeal-header .subdeal-value,
+.subdeal-header .subdeal-deposit,
+.subdeal-header .subdeal-remaining {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.commission-comment {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f9f9f9;
+  border-left: 3px solid #e4e4e5;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 @media (max-width: 520px) {
   main {
     padding: 16px;
@@ -351,5 +479,26 @@ p {
 
   .commission-amount {
     margin-top: 8px;
+  }
+
+  .subdeal-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .subdeal-row > span {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .subdeal-row > span::before {
+    content: attr(class);
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .subdeal-header {
+    display: none;
   }
 }
